@@ -118,7 +118,10 @@ def main():
 
         print(f"\n--- Fetched PR Details for #{pr_number} ---")
         print(f"Title: {pr_details['title']}")
-        print(f"Description: {pr_details.get('description', 'N/A')[:100]}...")
+        # Handle potential None description before slicing
+        description = pr_details.get('description') # Get description, could be None
+        description_snippet = (description[:100] + '...') if description else 'N/A' # Slice only if description exists
+        print(f"Description: {description_snippet}")
         # print("\n--- Fetched Diff ---") # Keep this commented unless debugging full diff
         # print(diff_content)
         # print("--------------------")
