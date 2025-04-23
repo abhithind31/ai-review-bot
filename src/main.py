@@ -272,21 +272,9 @@ def main():
 
 
 if __name__ == "__main__":
-    # Environment variable checks remain largely the same,
-    # GEMINI_API_KEY check now happens inside main() when GeminiClient is initialized
-    required_env_vars = ["GITHUB_TOKEN", "GITHUB_EVENT_PATH", "GITHUB_REPOSITORY", "PR_NUMBER"]
-    # No need to check GEMINI_API_KEY here anymore
-
-    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-    if missing_vars:
-         print(f"Error: Missing required environment variables: {', '.join(missing_vars)}", file=sys.stderr)
-         sys.exit(1)
-
-    # Check PR_NUMBER is integer
-    try:
-        pr_num_int = int(os.getenv("PR_NUMBER"))
-    except (ValueError, TypeError):
-        print(f"Error: PR_NUMBER environment variable ('{os.getenv('PR_NUMBER')}') must be an integer.", file=sys.stderr)
-        sys.exit(1)
-
+    # When running as an action, the action.yml ensures necessary env vars are set.
+    # We only need minimal checks here, primarily ensuring the script is invoked correctly.
+    # For example, check if GITHUB_EVENT_PATH exists, which is done at the start of main().
+    # The crucial checks for API keys etc. are handled within the respective client initializations.
+    print("Executing main function...")
     main()

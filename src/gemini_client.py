@@ -6,22 +6,25 @@ import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import sys
 
-# Consider making the model name configurable via environment variable
-DEFAULT_MODEL_NAME = "gemini-1.5-flash-latest" # Or "gemini-pro"
+# Get model name from environment variable, falling back to a default
+DEFAULT_MODEL_NAME = "gemini-1.5-flash-latest"
+ENV_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", DEFAULT_MODEL_NAME)
 
 class GeminiClient:
     def __init__(self):
+        # Read API Key from environment variable (set by action.yml)
         self.api_key = os.getenv("GEMINI_API_KEY")
-        self.model_name = os.getenv("GEMINI_MODEL_NAME", DEFAULT_MODEL_NAME)
+        self.model_name = ENV_MODEL_NAME # Use the model name determined at module load time
+        
         if not self.api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set.")
+            # Exit if API key is missing - this is mandatory
+            print("Error: GEMINI_API_KEY environment variable not set.", file=sys.stderr)
+            sys.exit("Missing GEMINI_API_KEY environment variable.") # Use sys.exit with message
+            # Or raise ValueError("GEMINI_API_KEY environment variable not set.") if main.py handles it
 
         try:
             genai.configure(api_key=self.api_key)
-            # Initialize the GenerativeModel
-            # TODO: Consider adding safety settings configuration if needed
-            # Safety settings documentation: https://ai.google.dev/docs/safety_setting_gemini
-            # Example: Block potentially harmful content with higher threshold
+            # Safety settings (consider making these configurable too)
             self.safety_settings = {
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
@@ -30,13 +33,13 @@ class GeminiClient:
             }
             self.model = genai.GenerativeModel(
                 model_name=self.model_name,
-                safety_settings=self.safety_settings 
-                # generation_config could be added here if needed (e.g., temperature)
+                safety_settings=self.safety_settings
             )
             print(f"GeminiClient initialized with model: {self.model_name}")
         except Exception as e:
             print(f"Error configuring Gemini client: {e}", file=sys.stderr)
-            raise ValueError(f"Failed to initialize Gemini model: {e}")
+            # Exit if model initialization fails
+            sys.exit(f"Failed to initialize Gemini model '{self.model_name}': {e}")
 
     def get_review(self, prompt):
         """Sends the prompt to Gemini and expects a JSON response."""

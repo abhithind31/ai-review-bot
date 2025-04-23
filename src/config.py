@@ -3,20 +3,34 @@
 import os
 import yaml # Requires PyYAML package
 
-DEFAULT_CONFIG_PATH = ".github/gemini-reviewer.yml"
+# Get default config path from environment variable set by action.yml, 
+# defaulting to the standard path if not set (e.g., during local testing)
+DEFAULT_CONFIG_PATH_IN_REPO = os.getenv("CONFIG_PATH", ".github/gemini-reviewer.yml") 
 DEFAULT_INSTRUCTIONS = "Focus on bugs, security, and performance. Do not suggest code comments."
 
-def load_config(config_path=DEFAULT_CONFIG_PATH):
-    """Loads configuration from the YAML file or returns defaults."""
+def load_config(config_path_override=None):
+    """Loads configuration from the YAML file or returns defaults.
+    Uses config_path_override if provided, otherwise uses DEFAULT_CONFIG_PATH_IN_REPO.
+    """
+    target_config_path = config_path_override if config_path_override else DEFAULT_CONFIG_PATH_IN_REPO
+    
     config = {
         "exclude": [],
         "custom_instructions": DEFAULT_INSTRUCTIONS,
         "jira": None # Placeholder for Jira config
     }
 
-    if os.path.exists(config_path):
+    # Important: When running as an action, the config file path is relative
+    # to the root of the *consuming* repository, not the action repository.
+    # The GITHUB_WORKSPACE variable points to the root of the consuming repo checkout.
+    workspace_path = os.getenv("GITHUB_WORKSPACE", ".") # Default to current dir if not in GHA
+    absolute_config_path = os.path.join(workspace_path, target_config_path)
+
+    print(f"Attempting to load config from: {absolute_config_path} (relative: {target_config_path})")
+
+    if os.path.exists(absolute_config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(absolute_config_path, 'r') as f:
                 user_config = yaml.safe_load(f)
             
             if user_config:
@@ -24,18 +38,18 @@ def load_config(config_path=DEFAULT_CONFIG_PATH):
                 # Ensure instructions are treated as a single string block
                 config["custom_instructions"] = user_config.get("custom_instructions", DEFAULT_INSTRUCTIONS).strip()
                 config["jira"] = user_config.get("jira") # Load entire Jira block if present
-                print(f"Loaded configuration from {config_path}")
+                print(f"Loaded configuration from {absolute_config_path}")
             else:
-                 print(f"Configuration file {config_path} is empty, using defaults.")
+                 print(f"Configuration file {absolute_config_path} is empty, using defaults.")
 
         except yaml.YAMLError as e:
-            print(f"Error parsing YAML configuration file {config_path}: {e}")
+            print(f"Error parsing YAML configuration file {absolute_config_path}: {e}")
             print("Using default configuration.")
         except Exception as e:
-            print(f"Error reading configuration file {config_path}: {e}")
+            print(f"Error reading configuration file {absolute_config_path}: {e}")
             print("Using default configuration.")
     else:
-        print(f"Configuration file {config_path} not found, using defaults.")
+        print(f"Configuration file {absolute_config_path} not found, using defaults.")
 
     # Basic validation
     if not isinstance(config["exclude"], list):
