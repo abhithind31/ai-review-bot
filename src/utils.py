@@ -305,6 +305,8 @@ def extract_context_around_hunk(full_file_content, hunk_header, fallback_lines=2
     return final_context
 
 
+# Comment out the entire test block to avoid syntax errors during action execution
+"""
 # Example usage (for testing)
 if __name__ == "__main__":
     test_diff = """
@@ -466,3 +468,4 @@ z = process_list([1,2,3,4,5])
     context6 = extract_context_around_hunk(test_py_content, hunk_header6)
     print("\nContext for Hunk 6 (imports):")
     print(context6) # Should fallback, block finder might return 0,0
+"""
