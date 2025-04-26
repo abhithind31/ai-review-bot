@@ -123,6 +123,24 @@ class GitHubAPI:
             print(f"Error fetching file content for {file_path} at ref {ref}: {e}")
             return None # Indicate a fetch error
 
+    def post_pr_comment(self, pr_number, body):
+        """Posts a general comment on the Pull Request (issue comment)."""
+        # Uses the issues endpoint, as PRs are issues
+        issue_comment_url = f"{self.api_base_url}/repos/{self.repo}/issues/{pr_number}/comments"
+        payload = json.dumps({"body": body})
+
+        try:
+            json_headers = self.headers.copy()
+            json_headers["Accept"] = "application/vnd.github.v3+json"
+            response = requests.post(issue_comment_url, headers=json_headers, data=payload)
+            response.raise_for_status()
+            print(f"Successfully posted summary comment to PR #{pr_number}")
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"Error posting PR comment: {e}")
+            print(f"Response body: {response.text if 'response' in locals() else 'N/A'}")
+            return None
+
 
 # Example usage (for testing)
 if __name__ == "__main__":
@@ -153,6 +171,8 @@ if __name__ == "__main__":
                     print("Could not fetch file content.")
                 # Example posting - replace with actual path/line from diff
                 # api.post_review_comment(pr_num_test, commit_id, "src/main.py", 10, "Test comment from script")
+                # Example posting PR comment
+                # api.post_pr_comment(pr_num_test, "This is a test summary comment.")
             else:
                 print("\nCould not get commit ID.")
         else:
