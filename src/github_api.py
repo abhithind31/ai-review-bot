@@ -93,6 +93,37 @@ class GitHubAPI:
             print(f"Error fetching PR commit ID for #{pr_number}: {e}")
             return None
 
+    def get_file_content(self, file_path, ref):
+        """Fetches the raw content of a file at a specific ref (commit SHA, branch, etc.)."""
+        # Use the Get Repository Content endpoint
+        # https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28#get-repository-content
+        content_url = f"{self.api_base_url}/repos/{self.repo}/contents/{file_path}"
+        query_params = {"ref": ref}
+
+        # We need raw content, so use the 'application/vnd.github.raw' media type
+        raw_headers = self.headers.copy()
+        raw_headers["Accept"] = "application/vnd.github.raw"
+
+        try:
+            response = requests.get(content_url, headers=raw_headers, params=query_params)
+            response.raise_for_status()
+            # The response body is the raw file content
+            return response.text
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                print(f"Warning: File not found at path '{file_path}' for ref '{ref}'. It might be a new file in the PR.")
+                # Return None or empty string? For new files, the full content doesn't exist at the commit yet.
+                # Let's return an empty string to signify this case distinctly from an API error.
+                return ""
+            else:
+                print(f"Error fetching file content for {file_path} at ref {ref}: {e}")
+                print(f"Response body: {e.response.text}")
+                return None # Indicate a fetch error
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching file content for {file_path} at ref {ref}: {e}")
+            return None # Indicate a fetch error
+
+
 # Example usage (for testing)
 if __name__ == "__main__":
     # Requires GITHUB_TOKEN, GITHUB_REPOSITORY, and PR_NUMBER env vars set for testing
@@ -112,6 +143,14 @@ if __name__ == "__main__":
             commit_id = api.get_pr_commit_id(pr_num_test)
             if commit_id:
                 print(f"\nHEAD commit ID: {commit_id}")
+                # Example fetching file content - replace with a real file path
+                test_file_path = "README.md" # Replace with a file expected in your test repo
+                print(f"\n--- Fetching content for {test_file_path} at {commit_id[:7]} ---")
+                file_content = api.get_file_content(test_file_path, commit_id)
+                if file_content is not None:
+                    print(f"Content (first 200 chars):\n{file_content[:200]}...")
+                else:
+                    print("Could not fetch file content.")
                 # Example posting - replace with actual path/line from diff
                 # api.post_review_comment(pr_num_test, commit_id, "src/main.py", 10, "Test comment from script")
             else:

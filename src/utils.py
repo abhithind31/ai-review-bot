@@ -149,6 +149,162 @@ def map_hunk_line_to_file_line(hunk_header, hunk_content, hunk_line_number):
     # print(f"Debug: Hunk line number {hunk_line_number} is out of bounds for the hunk content.")
     return None
 
+# --- Context Extraction Logic ---
+
+def _get_indentation(line):
+    """Returns the number of leading spaces."""
+    return len(line) - len(line.lstrip(' '))
+
+def _find_block_boundaries(lines, start_index):
+    """Attempts to find function/class boundaries around a start index based on indentation (Python focus)."""
+    if start_index >= len(lines) or start_index < 0:
+        return None, None
+
+    start_line_indent = _get_indentation(lines[start_index])
+
+    # Find the start of the block (e.g., 'def' or 'class' line)
+    block_start_index = start_index
+    for i in range(start_index, -1, -1):
+        line = lines[i]
+        indent = _get_indentation(line)
+        # If we find a line with less indentation, the line *after* it is likely the start
+        # Or if we hit the top-level 'def' or 'class'
+        if indent < start_line_indent or (indent == 0 and (line.strip().startswith("def ") or line.strip().startswith("class "))):
+            block_start_index = i
+            # If the found line is 'def' or 'class', keep it. Otherwise, the block starts *after* this less indented line.
+            if not (line.strip().startswith("def ") or line.strip().startswith("class ")):
+                 block_start_index = i + 1
+            break
+        # If we are already at indent 0 and haven't found def/class, assume the start is the first line
+        if indent == 0 and i < start_index:
+            block_start_index = i
+            break
+    else: # Loop completed without break (reached file start)
+        block_start_index = 0
+
+
+    # Find the end of the block
+    block_end_index = start_index
+    block_start_line_indent = _get_indentation(lines[block_start_index]) # Indent of the 'def' or 'class' line itself
+
+    for i in range(start_index + 1, len(lines)):
+        line = lines[i]
+        # Skip empty or comment lines for boundary detection
+        if not line.strip() or line.strip().startswith('#'):
+            block_end_index = i
+            continue
+
+        indent = _get_indentation(line)
+        # Block ends when we find a line with indentation <= the block's starting line's indentation
+        # Need to be careful if the block starts at indent 0
+        if block_start_line_indent == 0:
+             if indent == 0 and i > block_start_index: # Found another top-level definition or end of file
+                 block_end_index = i -1 # The previous line was the end
+                 break
+        elif indent <= block_start_line_indent:
+             block_end_index = i - 1 # The previous line was the end
+             break
+        block_end_index = i # Otherwise, this line is still part of the block
+    else: # Loop completed without break (reached file end)
+        block_end_index = len(lines) - 1
+
+    # Ensure start <= end
+    if block_start_index > block_end_index:
+        # This might happen if the change is on the very last line and logic gets confused
+        # Fallback to just the line itself or a small window? For now, let's return the original index.
+        return start_index, start_index
+
+    # print(f"Debug: Found block from {block_start_index + 1} to {block_end_index + 1}")
+    return block_start_index, block_end_index
+
+
+def extract_context_around_hunk(full_file_content, hunk_header, fallback_lines=20):
+    """Extracts relevant context (imports + function/class or fallback lines) for a hunk."""
+
+    if full_file_content is None: # Handle API error case from get_file_content
+        print("Warning: Cannot extract context, full_file_content is None.")
+        return ""
+    if not full_file_content.strip(): # Handle case where file was empty or deleted/not found
+        # print("Debug: Full file content is empty, likely a new or deleted file. No context extracted.")
+        return "" # No context to extract
+
+    lines = full_file_content.splitlines()
+
+    # 1. Extract Imports (Python specific for now)
+    imports_section = []
+    for line in lines:
+        stripped_line = line.strip()
+        if stripped_line.startswith("import ") or stripped_line.startswith("from "):
+            imports_section.append(line)
+        elif imports_section and stripped_line: # Stop after first non-import, non-empty line
+            break
+    imports_context = "\n".join(imports_section)
+
+    # 2. Parse Hunk Header for starting line number in the new file
+    match = re.match(r'@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', hunk_header)
+    if not match:
+        print(f"Warning: Could not parse hunk header for context extraction: {hunk_header}")
+        # Cannot determine context area without hunk header info
+        return imports_context # Return only imports if hunk header fails
+
+    new_start_line_1_based = int(match.group(1))
+    new_line_count = int(match.group(2) or 1) # How many lines the hunk covers in the new file
+
+    # Adjust for 0-based indexing for list access
+    hunk_start_index_0_based = new_start_line_1_based - 1
+
+    # Handle edge case: hunk starts at line 0 (e.g., @@ -0,0 +1,5 @@) means start at index 0
+    if hunk_start_index_0_based < 0:
+         hunk_start_index_0_based = 0
+
+    # Ensure start index is within the bounds of the actual file content
+    if hunk_start_index_0_based >= len(lines):
+         print(f"Warning: Hunk start line {new_start_line_1_based} is beyond the file length ({len(lines)}). Cannot extract context.")
+         # This might happen with unusual diffs or file modifications.
+         # Return imports only, as we can't reliably find context.
+         return imports_context
+
+    # 3. Try to find function/class boundaries
+    context_snippet = ""
+    block_start_idx, block_end_idx = _find_block_boundaries(lines, hunk_start_index_0_based)
+
+    if block_start_idx is not None and block_end_idx is not None:
+         # Ensure indices are valid
+         block_start_idx = max(0, block_start_idx)
+         block_end_idx = min(len(lines) - 1, block_end_idx)
+         context_snippet = "\n".join(lines[block_start_idx : block_end_idx + 1])
+         # print(f"Debug: Extracted function/class context lines {block_start_idx+1}-{block_end_idx+1}")
+    else:
+         # print(f"Debug: Could not find block boundaries, falling back to {fallback_lines} lines.")
+         # Fallback to N lines before/after
+         # Calculate the end index of the hunk in the file content
+         # Need to be careful here, the hunk content might not align perfectly if lines were only deleted
+         # Let's use the line count from the header as a guide for the hunk's span in the new file
+         hunk_end_index_0_based = hunk_start_index_0_based + new_line_count -1
+
+         fallback_start = max(0, hunk_start_index_0_based - fallback_lines)
+         # The end boundary should be *at least* the end of the hunk, plus fallback lines
+         fallback_end = min(len(lines) - 1, hunk_end_index_0_based + fallback_lines)
+
+         context_snippet = "\n".join(lines[fallback_start : fallback_end + 1])
+         # print(f"Debug: Extracted fallback context lines {fallback_start+1}-{fallback_end+1}")
+
+
+    # 4. Combine Imports and Context Block
+    final_context = ""
+    if imports_context:
+        final_context += "Relevant Imports:\n```python\n" + imports_context + "\n```\n\n"
+
+    if context_snippet:
+         final_context += "Code Context:\n```python\n" + context_snippet + "\n```"
+    elif not imports_context:
+         # Only happens if file is empty or only imports and hunk header parsing failed
+         final_context = "No relevant code context could be extracted."
+
+
+    return final_context
+
+
 # Example usage (for testing)
 if __name__ == "__main__":
     test_diff = """
@@ -235,3 +391,78 @@ index 000..mno
 +New guide.""" # AI comment on line 1 (only line)
     map_result5 = map_hunk_line_to_file_line(header3, content3, 1)
     print(f"Mapping hunk line 1 in Hunk 3: {map_result5} (Expected: 1)") # 1(start)+0=1
+
+    print("\n--- Testing Context Extraction ---")
+    test_py_content = """
+import os
+import sys
+from collections import defaultdict
+
+# A comment
+class MyClass:
+    def __init__(self, name):
+        self.name = name
+
+    def greet(self, message):
+        """Greets the user."""
+        print(f"Hello {self.name}, {message}!")
+        if len(message) > 10:
+             print("That's a long message.")
+        # Some more code
+
+def helper_function(data):
+     counts = defaultdict(int)
+     for item in data:
+         counts[item] += 1
+     return counts
+
+# Top level code
+x = 10
+y = helper_function([1, 2, 2, 3])
+print(f"Result: {y}")
+
+# Another function
+def process_list(items):
+    processed = []
+    for i in items:
+        if i % 2 == 0:
+            processed.append(i * 2) # Change here
+    return processed
+
+z = process_list([1,2,3,4,5])
+"""
+
+    # Test case 1: Change inside MyClass.greet
+    hunk_header1 = "@@ -10,5 +10,6 @@" # Assume change is around line 12 ("That's a long message.")
+    context1 = extract_context_around_hunk(test_py_content, hunk_header1)
+    print("\nContext for Hunk 1 (inside greet):")
+    print(context1)
+
+    # Test case 2: Change inside helper_function
+    hunk_header2 = "@@ -16,4 +17,5 @@" # Assume change is around line 19 (counts[item] += 1)
+    context2 = extract_context_around_hunk(test_py_content, hunk_header2)
+    print("\nContext for Hunk 2 (inside helper_function):")
+    print(context2)
+
+    # Test case 3: Change in top-level code
+    hunk_header3 = "@@ -22,3 +23,4 @@" # Assume change is around line 24 (print(f"Result: {y}"))
+    context3 = extract_context_around_hunk(test_py_content, hunk_header3)
+    print("\nContext for Hunk 3 (top-level code):")
+    print(context3) # Should likely fallback to N lines
+
+    # Test case 4: Change inside process_list
+    hunk_header4 = "@@ -29,4 +30,5 @@" # Assume change is around line 31 (processed.append...)
+    context4 = extract_context_around_hunk(test_py_content, hunk_header4)
+    print("\nContext for Hunk 4 (inside process_list):")
+    print(context4)
+
+    # Test case 5: Empty file content
+    context5 = extract_context_around_hunk("", "@@ -0,0 +1,1 @@")
+    print("\nContext for Hunk 5 (empty file):")
+    print(context5)
+
+    # Test case 6: Change at the very beginning (imports)
+    hunk_header6 = "@@ -1,3 +1,4 @@" # Assume change is around line 2 (import sys)
+    context6 = extract_context_around_hunk(test_py_content, hunk_header6)
+    print("\nContext for Hunk 6 (imports):")
+    print(context6) # Should fallback, block finder might return 0,0

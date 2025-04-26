@@ -2,6 +2,7 @@
 import os
 import sys
 import json
+from functools import lru_cache # For caching file content
 
 # Import our modules
 from github_api import GitHubAPI
@@ -9,12 +10,13 @@ from gemini_client import GeminiClient
 from config import load_config
 from utils import parse_diff, should_exclude_file
 from utils import map_hunk_line_to_file_line
+from utils import extract_context_around_hunk # Import the new function
 
 # Define the trigger command
 TRIGGER_COMMAND = "/gemini-review"
 
 # --- Prompt Template ---
-# Defined here for clarity, could be moved to a separate file/config later
+# Updated to include file context and specify focus
 PROMPT_TEMPLATE = """
 You are an AI assistant reviewing a code change pull request.
 
@@ -31,19 +33,22 @@ You are an AI assistant reviewing a code change pull request.
 **Custom Review Instructions:**
 {custom_instructions}
 
-**Code Diff Hunk:**
+**Relevant Code Context:**
+{code_context}
+
+**Specific Changes (Diff Hunk):**
 ```diff
 {hunk_content}
 ```
 
 **Your Task:**
-Review the provided code diff hunk based *only* on the information given (PR details, Jira context, custom instructions, and the diff itself).
-Focus *exclusively* on identifying potential bugs, security vulnerabilities, or performance issues based on the custom instructions.
-If you find specific lines within the hunk that require changes, provide your feedback.
-If the hunk looks good according to the instructions, respond with an empty list.
+Review the **Specific Changes (Diff Hunk)** within the context of the **Relevant Code Context** provided above.
+Focus *exclusively* on identifying potential bugs, security vulnerabilities, performance issues, or violations of the **Custom Review Instructions** based *only* on the provided information.
+If you find specific lines within the **Diff Hunk** that require changes, provide your feedback.
+If the hunk looks good according to the instructions and context, respond with an empty list.
 
 **Output Format:**
-Respond *only* with a JSON object containing a list called "reviews". Each item in the list should be an object with "lineNumber" (integer, relative to the *diff hunk*, starting at 1) and "reviewComment" (string).
+Respond *only* with a JSON object containing a list called "reviews". Each item in the list should be an object with "lineNumber" (integer, relative to the *start of the diff hunk*, starting at 1) and "reviewComment" (string).
 
 Example valid JSON response:
 {{"reviews": [{{"lineNumber": 5, "reviewComment": "This loop could lead to an infinite loop if the condition is never met."}}]}}
@@ -52,10 +57,10 @@ Example response for no issues:
 {{"reviews": []}}
 
 Do NOT suggest adding code comments or making purely stylistic changes unless specifically requested by the custom instructions.
-Do NOT comment on code outside the provided diff hunk.
+Do NOT comment on code outside the provided **Diff Hunk**.
 """
 
-def build_prompt(pr_details, file_path, hunk_content, custom_instructions, jira_context):
+def build_prompt(pr_details, file_path, code_context, hunk_content, custom_instructions, jira_context):
     """Builds the prompt string using the template and provided context."""
     return PROMPT_TEMPLATE.format(
         pr_title=pr_details['title'],
@@ -63,8 +68,15 @@ def build_prompt(pr_details, file_path, hunk_content, custom_instructions, jira_
         file_path=file_path,
         jira_context=jira_context,
         custom_instructions=custom_instructions or "N/A", # Handle empty instructions
-        hunk_content=hunk_content
+        code_context=code_context, # Add the extracted context
+        hunk_content=hunk_content # Keep the original hunk
     )
+
+# LRU Cache decorator to avoid fetching the same file content multiple times
+@lru_cache(maxsize=16) # Cache up to 16 files
+def get_cached_file_content(github_api, file_path, commit_id):
+    print(f"  Fetching content for: {file_path} @ {commit_id[:7]}")
+    return github_api.get_file_content(file_path, commit_id)
 
 def main():
     print("Starting AI Review Bot...")
@@ -107,48 +119,54 @@ def main():
 
     print("Trigger command detected.")
 
-    # 4. Fetch PR details (diff)
+    # 4. Instantiate GitHubAPI early for reuse
     try:
         github_api = GitHubAPI()
-        pr_details, diff_content = github_api.get_pr_details(pr_number)
+    except Exception as e: # Catch potential init errors if any added later
+        print(f"Error initializing GitHub API: {e}", file=sys.stderr)
+        sys.exit(1)
 
+    # 5. Fetch PR details (diff and commit ID)
+    commit_id = None
+    try:
+        pr_details, diff_content = github_api.get_pr_details(pr_number)
         if pr_details is None or diff_content is None:
             print(f"Error: Could not fetch PR details or diff for PR #{pr_number}.", file=sys.stderr)
             sys.exit(1)
 
+        # Fetch commit_id needed for fetching file content and posting comments
+        commit_id = github_api.get_pr_commit_id(pr_number)
+        if not commit_id:
+            print("Error: Could not fetch commit ID for PR. Cannot fetch content or post comments.", file=sys.stderr)
+            sys.exit(1)
+
         print(f"\n--- Fetched PR Details for #{pr_number} ---")
         print(f"Title: {pr_details['title']}")
-        # Handle potential None description before slicing
-        description = pr_details.get('description') # Get description, could be None
-        description_snippet = (description[:100] + '...') if description else 'N/A' # Slice only if description exists
+        description = pr_details.get('description')
+        description_snippet = (description[:100] + '...') if description else 'N/A'
         print(f"Description: {description_snippet}")
-        # print("\n--- Fetched Diff ---") # Keep this commented unless debugging full diff
-        # print(diff_content)
-        # print("--------------------")
+        print(f"Using commit ID: {commit_id}")
 
     except Exception as e:
         print(f"An error occurred during GitHub API interaction: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 5. Load config (.github/gemini-reviewer.yml or defaults)
-    config = load_config() # Load configuration (includes exclude patterns)
+    # 6. Load config
+    config = load_config()
     print(f"\n--- Loaded Configuration ---")
     print(f"Exclude patterns: {config.get('exclude')}")
     print(f"Custom instructions: {config.get('custom_instructions', '')[:100]}...")
     print("--------------------------")
 
-
-    # 6. Parse Diff and Filter files based on config
+    # 7. Parse Diff and Filter files
     print("\n--- Parsing Diff and Filtering Files ---")
     parsed_diff_data = parse_diff(diff_content)
     filtered_files = {}
     excluded_files_count = 0
     for file_path, data in parsed_diff_data.items():
         if should_exclude_file(file_path, config['exclude']):
-            # print(f"Excluding file: {file_path}") # Optional debug logging
             excluded_files_count += 1
         else:
-            # Only include files that have hunks
             if data.get('hunks'):
                  filtered_files[file_path] = data
             else:
@@ -157,64 +175,67 @@ def main():
     print(f"Total files in diff: {len(parsed_diff_data)}")
     print(f"Files excluded: {excluded_files_count}")
     print(f"Files to review: {len(filtered_files)}")
-    # print(f"Files remaining for review: {list(filtered_files.keys())}") # Optional: List files
     print("-------------------------------------")
 
     if not filtered_files:
         print("No files left to review after filtering. Exiting.")
         sys.exit(0)
 
-    # --- Steps 7, 8 ---
-    # 7. Hunks are already parsed within filtered_files
-    # 8. Iterate through hunks, build prompts, call AI
-
+    # 8. Initialize Gemini Client
     try:
         gemini = GeminiClient()
-    except ValueError as e: # Catch API key error early
-         print(f"Error initializing Gemini Client: {e}", file=sys.stderr)
-         sys.exit(1)
+    except ValueError as e:
+        print(f"Error initializing Gemini Client: {e}", file=sys.stderr)
+        sys.exit(1)
 
+    # 9. Process Hunks with Context
     all_comments = []
-    # Fetch commit_id needed for posting comments
-    commit_id = github_api.get_pr_commit_id(pr_number)
-    if not commit_id:
-         print("Error: Could not fetch commit ID for PR. Cannot post comments.", file=sys.stderr)
-         # Decide whether to exit or proceed without posting capability
-         sys.exit(1)
-    print(f"Using commit ID for comments: {commit_id}")
-
-
-    print("\n--- Starting Review Process ---")
+    print("\n--- Starting Review Process --- ")
     total_hunks = sum(len(data['hunks']) for data in filtered_files.values())
     hunk_counter = 0
+    # Process file by file
     for file_path, data in filtered_files.items():
-        print(f"Reviewing file: {file_path} ({len(data['hunks'])} hunks)")
+        print(f"\nReviewing file: {file_path} ({len(data['hunks'])} hunks)")
+
+        # Get full file content (using cache)
+        full_file_content = get_cached_file_content(github_api, file_path, commit_id)
+
+        if full_file_content is None:
+             print(f"  Error fetching content for {file_path}, skipping reviews for this file.", file=sys.stderr)
+             hunk_counter += len(data['hunks']) # Increment counter for skipped hunks
+             continue # Skip to next file
+
+        # Process hunks within the file
         for hunk_index, hunk in enumerate(data['hunks']):
             hunk_counter += 1
             print(f"  Processing hunk {hunk_index + 1}/{len(data['hunks'])} (Overall: {hunk_counter}/{total_hunks})")
 
-            # a. Fetch Jira context (Phase 3) - Placeholder
+            # a. Extract Context (Function/Class + Imports or Fallback)
+            code_context_snippet = extract_context_around_hunk(full_file_content, hunk['header'])
+
+            # b. Fetch Jira context (Phase 3) - Placeholder
             jira_context = "N/A" # TODO: Implement Jira fetching if enabled in config
 
-            # b. Build prompt
+            # c. Build prompt with context
             prompt = build_prompt(
                 pr_details=pr_details,
                 file_path=file_path,
+                code_context=code_context_snippet, # Pass the new context
                 hunk_content=hunk['content'],
                 custom_instructions=config['custom_instructions'],
                 jira_context=jira_context
             )
-            # print(f"    Prompt for Hunk {hunk_index + 1}:\n{prompt[:200]}...\n") # Debug prompt
+            # print(f"    Code Context Snippet:\n{code_context_snippet[:300]}...") # Debug context
+            # print(f"    Prompt for Hunk {hunk_index + 1}:\n{prompt[:200]}...\n") # Debug prompt start
 
-            # c. Call Gemini API
+            # d. Call Gemini API
             try:
                 review_result = gemini.get_review(prompt)
             except Exception as e:
                 print(f"  Error calling Gemini API for hunk {hunk_index + 1} in {file_path}: {e}", file=sys.stderr)
-                # Optionally continue to the next hunk or file?
                 continue # Skip this hunk on error
 
-            # d. Collect responses for posting
+            # e. Collect responses for posting
             if review_result and 'reviews' in review_result:
                 for review in review_result['reviews']:
                     hunk_line_num = review.get('lineNumber')
@@ -224,8 +245,6 @@ def main():
                         print(f"  Warning: Skipping review item with missing 'lineNumber' or 'reviewComment' in {file_path}")
                         continue
 
-                    # Map hunk line number to file line number (NEEDS IMPLEMENTATION in utils.py)
-                    # Placeholder implementation - replace with actual logic
                     file_line_number = map_hunk_line_to_file_line(hunk['header'], hunk['content'], hunk_line_num)
 
                     if file_line_number:
@@ -237,13 +256,11 @@ def main():
                             "body": review_comment
                         })
                     else:
-                         # Log mapping failure - AI might be commenting on a line not mappable (e.g. '-')
                          print(f"  -> Warning: Could not map hunk line {hunk_line_num} in {file_path} to file line number. Comment may be on a deleted line or mapping failed.")
             else:
                  print(f"  Warning: Invalid or empty response structure from Gemini for hunk {hunk_index + 1} in {file_path}")
 
-
-    # 9. Post review comments via GitHub API
+    # 10. Post review comments via GitHub API
     print(f"\n--- Posting {len(all_comments)} comments --- ")
     if not all_comments:
         print("No review comments to post.")
@@ -252,7 +269,6 @@ def main():
         comments_failed_count = 0
         for comment_data in all_comments:
             try:
-                # Pass pr_number explicitly along with unpacked comment_data
                 github_api.post_review_comment(
                     pr_number=pr_number,
                     commit_id=comment_data["commit_id"],
@@ -263,21 +279,12 @@ def main():
                 comments_posted_count += 1
             except Exception as e:
                  comments_failed_count += 1
-                 # Log the error but continue processing other comments
                  print(f"  Error posting comment to {comment_data['path']}:{comment_data['line']}: {e}", file=sys.stderr)
-                 # Optionally log the comment body that failed:
-                 # print(f"    Failed comment body: {comment_data['body']}", file=sys.stderr)
-        
-        print(f"Finished posting comments. Posted: {comments_posted_count}, Failed: {comments_failed_count}")
 
+        print(f"Finished posting comments. Posted: {comments_posted_count}, Failed: {comments_failed_count}")
 
     print("\nAI Review Bot finished processing.")
 
-
 if __name__ == "__main__":
-    # When running as an action, the action.yml ensures necessary env vars are set.
-    # We only need minimal checks here, primarily ensuring the script is invoked correctly.
-    # For example, check if GITHUB_EVENT_PATH exists, which is done at the start of main().
-    # The crucial checks for API keys etc. are handled within the respective client initializations.
     print("Executing main function...")
     main()
