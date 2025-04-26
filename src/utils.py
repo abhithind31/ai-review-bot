@@ -305,167 +305,164 @@ def extract_context_around_hunk(full_file_content, hunk_header, fallback_lines=2
     return final_context
 
 
-# Comment out the entire test block to avoid syntax errors during action execution
-"""
-# Example usage (for testing)
-if __name__ == "__main__":
-    test_diff = """
-diff --git a/README.md b/README.md
-index abc..def 100644
---- a/README.md
-+++ b/README.md
-@@ -1,3 +1,4 @@
- # Test Project
- 
- This is a test.
-+Adding a new line.
-diff --git a/src/main.py b/src/main.py
-index ghi..jkl 100644
---- a/src/main.py
-+++ b/src/main.py
-@@ -5,5 +5,6 @@
- 
- def main():
-     print("Hello")
-+    print("World")
- 
- if __name__ == "__main__":
-     main()
-diff --git a/docs/guide.txt b/docs/guide.txt
-new file mode 100644
-index 000..mno
---- /dev/null
-+++ b/docs/guide.txt
-@@ -0,0 +1 @@
-+New guide.
-"""
+# Example usage (for testing) - Commented out line-by-line
+# if __name__ == "__main__":
+#     test_diff = """
+# diff --git a/README.md b/README.md
+# index abc..def 100644
+# --- a/README.md
+# +++ b/README.md
+# @@ -1,3 +1,4 @@
+#  # Test Project
+#  
+#  This is a test.
+# +Adding a new line.
+# diff --git a/src/main.py b/src/main.py
+# index ghi..jkl 100644
+# --- a/src/main.py
+# +++ b/src/main.py
+# @@ -5,5 +5,6 @@
+#  
+#  def main():
+#      print("Hello")
+# +    print("World")
+#  
+#  if __name__ == "__main__":
+#      main()
+# diff --git a/docs/guide.txt b/docs/guide.txt
+# new file mode 100644
+# index 000..mno
+# --- /dev/null
+# +++ b/docs/guide.txt
+# @@ -0,0 +1 @@
+# +New guide.
+# """
     
-    print("--- Testing diff parsing ---")
-    parsed_files = parse_diff(test_diff)
-    import json
-    print(json.dumps(parsed_files, indent=2))
+#     print("--- Testing diff parsing ---")
+#     parsed_files = parse_diff(test_diff)
+#     import json
+#     print(json.dumps(parsed_files, indent=2))
 
-    print("\n--- Testing file exclusion ---")
-    exclude_list = ["*.md", "docs/*", "*.log"]
-    print(f"Exclude patterns: {exclude_list}")
-    print(f"Should exclude 'README.md': {should_exclude_file('README.md', exclude_list)}")
-    print(f"Should exclude 'src/main.py': {should_exclude_file('src/main.py', exclude_list)}")
-    print(f"Should exclude 'docs/guide.txt': {should_exclude_file('docs/guide.txt', exclude_list)}")
-    print(f"Should exclude 'app.log': {should_exclude_file('app.log', exclude_list)}")
-    print(f"Should exclude 'src/utils.py': {should_exclude_file('src/utils.py', [])}") # No patterns
+#     print("\n--- Testing file exclusion ---")
+#     exclude_list = ["*.md", "docs/*", "*.log"]
+#     print(f"Exclude patterns: {exclude_list}")
+#     print(f"Should exclude 'README.md': {should_exclude_file('README.md', exclude_list)}")
+#     print(f"Should exclude 'src/main.py': {should_exclude_file('src/main.py', exclude_list)}")
+#     print(f"Should exclude 'docs/guide.txt': {should_exclude_file('docs/guide.txt', exclude_list)}")
+#     print(f"Should exclude 'app.log': {should_exclude_file('app.log', exclude_list)}")
+#     print(f"Should exclude 'src/utils.py': {should_exclude_file('src/utils.py', [])}") # No patterns
     
-    print("\n--- Testing Jira key extraction ---")
-    test_text = "Fixes ABC-123, relates to CORE-456. Also mentions xyz-789 but that's not a key."
-    keys = extract_jira_keys(test_text, ["ABC", "CORE"])
-    print(f"Found keys in '{test_text}': {keys}") 
+#     print("\n--- Testing Jira key extraction ---")
+#     test_text = "Fixes ABC-123, relates to CORE-456. Also mentions xyz-789 but that's not a key."
+#     keys = extract_jira_keys(test_text, ["ABC", "CORE"])
+#     print(f"Found keys in '{test_text}': {keys}") 
 
-    print("\n--- Testing Hunk Line Mapping --- ")
-    header1 = "@@ -5,5 +5,6 @@"
-    content1 = """@@ -5,5 +5,6 @@
- 
- def main():
-     print("Hello")
--    # Old comment
-+    print("World") # AI comments on this line (hunk line 4)
- 
- if __name__ == "__main__":
-     main()"""
-    map_result1 = map_hunk_line_to_file_line(header1, content1, 4)
-    print(f"Mapping hunk line 4 in Hunk 1: {map_result1} (Expected: 8)") # 5(start)+0(space)+0(space)+1(+)=8
+#     print("\n--- Testing Hunk Line Mapping --- ")
+#     header1 = "@@ -5,5 +5,6 @@"
+#     content1 = """@@ -5,5 +5,6 @@
+#  
+#  def main():
+#      print("Hello")
+# -    # Old comment
+# +    print("World") # AI comments on this line (hunk line 4)
+#  
+#  if __name__ == "__main__":
+#      main()"""
+#     map_result1 = map_hunk_line_to_file_line(header1, content1, 4)
+#     print(f"Mapping hunk line 4 in Hunk 1: {map_result1} (Expected: 8)") # 5(start)+0(space)+0(space)+1(+)=8
 
-    header2 = "@@ -1,3 +1,4 @@"
-    content2 = """@@ -1,3 +1,4 @@
- # Test Project
- 
- This is a test.
-+Adding a new line.""" # AI comments on this line (hunk line 4)
-    map_result2 = map_hunk_line_to_file_line(header2, content2, 4)
-    print(f"Mapping hunk line 4 in Hunk 2: {map_result2} (Expected: 4)") # 1(start)+0(space)+0(space)+1(+)=4
+#     header2 = "@@ -1,3 +1,4 @@"
+#     content2 = """@@ -1,3 +1,4 @@
+#  # Test Project
+#  
+#  This is a test.
+# +Adding a new line.""" # AI comments on this line (hunk line 4)
+#     map_result2 = map_hunk_line_to_file_line(header2, content2, 4)
+#     print(f"Mapping hunk line 4 in Hunk 2: {map_result2} (Expected: 4)") # 1(start)+0(space)+0(space)+1(+)=4
 
-    map_result3 = map_hunk_line_to_file_line(header1, content1, 3) # AI comment on line 3 (deleted line)
-    print(f"Mapping hunk line 3 in Hunk 1: {map_result3} (Expected: None)")
+#     map_result3 = map_hunk_line_to_file_line(header1, content1, 3) # AI comment on line 3 (deleted line)
+#     print(f"Mapping hunk line 3 in Hunk 1: {map_result3} (Expected: None)")
 
-    map_result4 = map_hunk_line_to_file_line(header1, content1, 6) # AI comment on line 6 (context line)
-    print(f"Mapping hunk line 6 in Hunk 1: {map_result4} (Expected: 10)") # 5(start)+0+0+1+1+1=10
+#     map_result4 = map_hunk_line_to_file_line(header1, content1, 6) # AI comment on line 6 (context line)
+#     print(f"Mapping hunk line 6 in Hunk 1: {map_result4} (Expected: 10)") # 5(start)+0+0+1+1+1=10
 
-    header3 = "@@ -0,0 +1 @@"
-    content3 = """@@ -0,0 +1 @@
-+New guide.""" # AI comment on line 1 (only line)
-    map_result5 = map_hunk_line_to_file_line(header3, content3, 1)
-    print(f"Mapping hunk line 1 in Hunk 3: {map_result5} (Expected: 1)") # 1(start)+0=1
+#     header3 = "@@ -0,0 +1 @@"
+#     content3 = """@@ -0,0 +1 @@
+# +New guide.""" # AI comment on line 1 (only line)
+#     map_result5 = map_hunk_line_to_file_line(header3, content3, 1)
+#     print(f"Mapping hunk line 1 in Hunk 3: {map_result5} (Expected: 1)") # 1(start)+0=1
 
-    print("\n--- Testing Context Extraction ---")
-    test_py_content = """
-import os
-import sys
-from collections import defaultdict
+#     print("\n--- Testing Context Extraction ---")
+#     test_py_content = """
+# import os
+# import sys
+# from collections import defaultdict
+# 
+# # A comment
+# class MyClass:
+#     def __init__(self, name):
+#         self.name = name
+# 
+#     def greet(self, message):
+#         """Greets the user."""
+#         print(f"Hello {self.name}, {message}!")
+#         if len(message) > 10:
+#              print("That's a long message.")
+#         # Some more code
+# 
+# def helper_function(data):
+#      counts = defaultdict(int)
+#      for item in data:
+#          counts[item] += 1
+#      return counts
+# 
+# # Top level code
+# x = 10
+# y = helper_function([1, 2, 2, 3])
+# print(f"Result: {y}")
+# 
+# # Another function
+# def process_list(items):
+#     processed = []
+#     for i in items:
+#         if i % 2 == 0:
+#             processed.append(i * 2) # Change here
+#     return processed
+# 
+# z = process_list([1,2,3,4,5])
+# """
 
-# A comment
-class MyClass:
-    def __init__(self, name):
-        self.name = name
+#     # Test case 1: Change inside MyClass.greet
+#     hunk_header1 = "@@ -10,5 +10,6 @@" # Assume change is around line 12 ("That's a long message.")
+#     context1 = extract_context_around_hunk(test_py_content, hunk_header1)
+#     print("\nContext for Hunk 1 (inside greet):")
+#     print(context1)
 
-    def greet(self, message):
-        """Greets the user."""
-        print(f"Hello {self.name}, {message}!")
-        if len(message) > 10:
-             print("That's a long message.")
-        # Some more code
+#     # Test case 2: Change inside helper_function
+#     hunk_header2 = "@@ -16,4 +17,5 @@" # Assume change is around line 19 (counts[item] += 1)
+#     context2 = extract_context_around_hunk(test_py_content, hunk_header2)
+#     print("\nContext for Hunk 2 (inside helper_function):")
+#     print(context2)
 
-def helper_function(data):
-     counts = defaultdict(int)
-     for item in data:
-         counts[item] += 1
-     return counts
+#     # Test case 3: Change in top-level code
+#     hunk_header3 = "@@ -22,3 +23,4 @@" # Assume change is around line 24 (print(f"Result: {y}"))
+#     context3 = extract_context_around_hunk(test_py_content, hunk_header3)
+#     print("\nContext for Hunk 3 (top-level code):")
+#     print(context3) # Should likely fallback to N lines
 
-# Top level code
-x = 10
-y = helper_function([1, 2, 2, 3])
-print(f"Result: {y}")
+#     # Test case 4: Change inside process_list
+#     hunk_header4 = "@@ -29,4 +30,5 @@" # Assume change is around line 31 (processed.append...)
+#     context4 = extract_context_around_hunk(test_py_content, hunk_header4)
+#     print("\nContext for Hunk 4 (inside process_list):")
+#     print(context4)
 
-# Another function
-def process_list(items):
-    processed = []
-    for i in items:
-        if i % 2 == 0:
-            processed.append(i * 2) # Change here
-    return processed
+#     # Test case 5: Empty file content
+#     context5 = extract_context_around_hunk("", "@@ -0,0 +1,1 @@")
+#     print("\nContext for Hunk 5 (empty file):")
+#     print(context5)
 
-z = process_list([1,2,3,4,5])
-"""
-
-    # Test case 1: Change inside MyClass.greet
-    hunk_header1 = "@@ -10,5 +10,6 @@" # Assume change is around line 12 ("That's a long message.")
-    context1 = extract_context_around_hunk(test_py_content, hunk_header1)
-    print("\nContext for Hunk 1 (inside greet):")
-    print(context1)
-
-    # Test case 2: Change inside helper_function
-    hunk_header2 = "@@ -16,4 +17,5 @@" # Assume change is around line 19 (counts[item] += 1)
-    context2 = extract_context_around_hunk(test_py_content, hunk_header2)
-    print("\nContext for Hunk 2 (inside helper_function):")
-    print(context2)
-
-    # Test case 3: Change in top-level code
-    hunk_header3 = "@@ -22,3 +23,4 @@" # Assume change is around line 24 (print(f"Result: {y}"))
-    context3 = extract_context_around_hunk(test_py_content, hunk_header3)
-    print("\nContext for Hunk 3 (top-level code):")
-    print(context3) # Should likely fallback to N lines
-
-    # Test case 4: Change inside process_list
-    hunk_header4 = "@@ -29,4 +30,5 @@" # Assume change is around line 31 (processed.append...)
-    context4 = extract_context_around_hunk(test_py_content, hunk_header4)
-    print("\nContext for Hunk 4 (inside process_list):")
-    print(context4)
-
-    # Test case 5: Empty file content
-    context5 = extract_context_around_hunk("", "@@ -0,0 +1,1 @@")
-    print("\nContext for Hunk 5 (empty file):")
-    print(context5)
-
-    # Test case 6: Change at the very beginning (imports)
-    hunk_header6 = "@@ -1,3 +1,4 @@" # Assume change is around line 2 (import sys)
-    context6 = extract_context_around_hunk(test_py_content, hunk_header6)
-    print("\nContext for Hunk 6 (imports):")
-    print(context6) # Should fallback, block finder might return 0,0
-"""
+#     # Test case 6: Change at the very beginning (imports)
+#     hunk_header6 = "@@ -1,3 +1,4 @@" # Assume change is around line 2 (import sys)
+#     context6 = extract_context_around_hunk(test_py_content, hunk_header6)
+#     print("\nContext for Hunk 6 (imports):")
+#     print(context6) # Should fallback, block finder might return 0,0
