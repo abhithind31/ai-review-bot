@@ -2,6 +2,7 @@
 import os
 import sys
 import json
+import re
 from functools import lru_cache # For caching file content
 
 # Import our modules
@@ -11,6 +12,8 @@ from config import load_config
 from utils import parse_diff, should_exclude_file
 from utils import map_hunk_line_to_file_line
 from utils import extract_context_around_hunk # Import the new function
+from jira_client import JiraClient # Added for Jira integration
+from jira_client import DEFAULT_JIRA_TICKET_PATTERN # Import the default pattern
 
 # Define the trigger command
 TRIGGER_COMMAND = "/gemini-review"
@@ -112,12 +115,24 @@ def main():
 
     print(f"Processing comment on PR #{pr_number}...")
 
-    # 3. Check if comment is the trigger command
-    if not comment_body.strip().startswith(TRIGGER_COMMAND):
-        print(f"Comment does not start with trigger command '{TRIGGER_COMMAND}'. Skipping.")
-        sys.exit(0)
-
-    print("Trigger command detected.")
+    # 3. Check if comment is the trigger command and extract optional explicit Jira key
+    comment_text = comment_body.strip()
+    explicit_jira_key = None
+    if comment_text.startswith(TRIGGER_COMMAND):
+        print("Trigger command detected.")
+        parts = comment_text.split()
+        if len(parts) > 1:
+            potential_key = parts[1]
+            # Use the default pattern for basic validation of explicit key
+            if re.fullmatch(DEFAULT_JIRA_TICKET_PATTERN, potential_key):
+                explicit_jira_key = potential_key
+                print(f"Explicit Jira key provided in command: {explicit_jira_key}")
+            else:
+                # Keep processing the command, just don't use the extra text as a key
+                print(f"Ignoring text '{potential_key}' after trigger command as it doesn't match Jira key pattern.")
+    else:
+         print(f"Comment does not start with trigger command '{TRIGGER_COMMAND}'. Skipping.")
+         sys.exit(0)
 
     # 4. Instantiate GitHubAPI early for reuse
     try:
@@ -157,6 +172,76 @@ def main():
     print(f"Exclude patterns: {config.get('exclude')}")
     print(f"Custom instructions: {config.get('custom_instructions', '')[:100]}...")
     print("--------------------------")
+
+    # 6.1 Initialize Jira Client (if enabled)
+    jira_client = None
+    if config.get("jira", {}).get("enabled"):
+        print("\n--- Initializing Jira Client ---")
+        jira_config = config["jira"]
+        jira_client = JiraClient(
+            server_url=jira_config.get("url"),
+            user_email=jira_config.get("user_email"),
+            api_token=jira_config.get("api_token")
+        )
+        if not jira_client.is_available():
+            print(f"Warning: Jira client initialization failed. Jira integration will be disabled. Error: {jira_client.error}", file=sys.stderr)
+            jira_client = None # Ensure it's None if failed
+        else:
+            print("Jira client initialized.")
+        print("-----------------------------")
+    else:
+        print("\nJira integration is disabled in the configuration.")
+
+    # 6.2 Fetch Jira Context (once per PR, if enabled)
+    jira_context_for_prompt = "N/A"
+    ticket_keys = [] # Initialize empty list
+
+    if jira_client:
+        # Determine which key to use: Explicit command > PR Title
+        if explicit_jira_key:
+            print("\n--- Fetching Jira Context (Using Explicit Key from Command) --- ")
+            ticket_keys = [explicit_jira_key]
+            print(f"  Using explicit key: {explicit_jira_key}")
+        else:
+            print("\n--- Fetching Jira Context (Attempting PR Title Extraction) --- ")
+            pr_title = pr_details.get('title', '')
+            ticket_key_from_title = None
+            
+            if ':' in pr_title:
+                potential_key = pr_title.split(':', 1)[0].strip()
+                # Validate the extracted key against the pattern (default or custom)
+                validation_pattern = config.get("jira", {}).get("ticket_id_pattern") or DEFAULT_JIRA_TICKET_PATTERN
+                try:
+                    if re.fullmatch(validation_pattern, potential_key):
+                        ticket_key_from_title = potential_key
+                        print(f"  Found potential Jira key in title: {ticket_key_from_title}")
+                        ticket_keys = [ticket_key_from_title] # Use this key
+                    else:
+                        print(f"  Text '{potential_key}' before colon in title does not match Jira key pattern '{validation_pattern}'.")
+                except re.error as e:
+                    print(f"  Error validating Jira key pattern '{validation_pattern}': {e}", file=sys.stderr)
+            else:
+                print("  PR title does not contain ':', cannot extract Jira key from title.")
+            
+            if not ticket_keys:
+                print("  No Jira key found in command or PR title prefix.")
+
+        if ticket_keys:
+            print(f"  Fetching details for keys: {ticket_keys}")
+            all_ticket_details = []
+            for key in ticket_keys:
+                details = jira_client.get_ticket_details(key)
+                if details:
+                    all_ticket_details.append(details)
+            
+            if all_ticket_details:
+                jira_context_for_prompt = jira_client.format_context_for_prompt(all_ticket_details)
+                print(f"  Successfully formatted Jira context for prompt.")
+            else:
+                print("  No details fetched for found Jira keys.")
+        else:
+            print("  No relevant Jira ticket keys found in PR title or description.")
+        print("---------------------------")
 
     # 7. Parse Diff and Filter files
     print("\n--- Parsing Diff and Filtering Files ---")
@@ -214,7 +299,9 @@ def main():
             code_context_snippet = extract_context_around_hunk(full_file_content, hunk['header'])
 
             # b. Fetch Jira context (Phase 3) - Placeholder
-            jira_context = "N/A" # TODO: Implement Jira fetching if enabled in config
+            # jira_context = "N/A" # TODO: Implement Jira fetching if enabled in config
+            # Use the globally fetched context
+            jira_context = jira_context_for_prompt
 
             # c. Build prompt with context
             prompt = build_prompt(
@@ -292,5 +379,16 @@ def main():
     print("\nAI Review Bot finished processing.")
 
 if __name__ == "__main__":
-    print("Executing main function...")
+    # Simple check for required env vars for local testing
+    # Add Jira vars check if you want to test that locally
+    required_vars = ["GITHUB_EVENT_PATH", "GITHUB_TOKEN", "GEMINI_API_KEY", "GITHUB_REPOSITORY", "GITHUB_API_URL", "PR_NUMBER"]
+    # Optional: Add JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN if testing Jira locally
+    
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    if missing_vars:
+        print(f"Error: Missing required environment variables for local execution: {', '.join(missing_vars)}", file=sys.stderr)
+        print("Please set these variables to simulate the GitHub Actions environment.")
+        # You might need to create a dummy event.json file and set GITHUB_EVENT_PATH to its path.
+        sys.exit(1)
+
     main()

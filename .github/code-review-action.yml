@@ -53,6 +53,12 @@ jobs:
           PR_NUMBER: ${{ github.event.issue.number }}
           # Optional: Pass model name if configurable
           # GEMINI_MODEL_NAME: gemini-1.5-flash-latest
+
+          # Jira Secrets (only pass if potentially needed, config checks existence)
+          # Users must configure these secrets in the repository settings for Jira integration to work.
+          JIRA_URL: ${{ secrets.JIRA_URL }}               # e.g., https://your-domain.atlassian.net
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: python src/main.py
 
       # Optional: Add a reaction to the comment to indicate processing status

@@ -1,7 +1,10 @@
 # requirements.txt
 
 requests>=2.26.0 # For GitHub API calls
-PyYAML>=5.4.1    # For parsing .github/gemini-reviewer.yml
+PyYAML>=6.0
+github_action_utils>=1.0.1
+google-generativeai>=0.5.4
+jira>=3.6.0 # Added for Jira integration
 
 # Add google-generativeai when integrating the actual API
 google-generativeai>=0.4.0 

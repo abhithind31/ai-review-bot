@@ -2,22 +2,36 @@
 
 import os
 import yaml # Requires PyYAML package
+import sys
 
 # Get default config path from environment variable set by action.yml, 
 # defaulting to the standard path if not set (e.g., during local testing)
 DEFAULT_CONFIG_PATH_IN_REPO = os.getenv("CONFIG_PATH", ".github/gemini-reviewer.yml") 
 DEFAULT_INSTRUCTIONS = "Focus on bugs, security, and performance. Do not suggest code comments."
 
+# Jira credentials from environment variables (set by the workflow)
+JIRA_URL = os.getenv("JIRA_URL")
+JIRA_USER_EMAIL = os.getenv("JIRA_USER_EMAIL")
+JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")
+
 def load_config(config_path_override=None):
     """Loads configuration from the YAML file or returns defaults.
     Uses config_path_override if provided, otherwise uses DEFAULT_CONFIG_PATH_IN_REPO.
+    Also injects Jira credentials if Jira is enabled.
     """
     target_config_path = config_path_override if config_path_override else DEFAULT_CONFIG_PATH_IN_REPO
     
     config = {
         "exclude": [],
         "custom_instructions": DEFAULT_INSTRUCTIONS,
-        "jira": None # Placeholder for Jira config
+        "jira": { # Default Jira config structure
+            "enabled": False,
+            "url": None,
+            "user_email": None,
+            "api_token": None,
+            "project_keys": [],
+            "ticket_id_pattern": None # Will default in JiraClient if None
+        }
     }
 
     # Important: When running as an action, the config file path is relative
@@ -37,8 +51,29 @@ def load_config(config_path_override=None):
                 config["exclude"] = user_config.get("exclude", [])
                 # Ensure instructions are treated as a single string block
                 config["custom_instructions"] = user_config.get("custom_instructions", DEFAULT_INSTRUCTIONS).strip()
-                config["jira"] = user_config.get("jira") # Load entire Jira block if present
+                
+                # Load Jira config block if present
+                jira_config = user_config.get("jira")
+                if isinstance(jira_config, dict):
+                    config["jira"]["enabled"] = jira_config.get("enabled", False)
+                    # Only attempt to load credentials if Jira is explicitly enabled
+                    if config["jira"]["enabled"]:
+                        config["jira"]["url"] = JIRA_URL
+                        config["jira"]["user_email"] = JIRA_USER_EMAIL
+                        config["jira"]["api_token"] = JIRA_API_TOKEN
+                        config["jira"]["project_keys"] = jira_config.get("project_keys", [])
+                        config["jira"]["ticket_id_pattern"] = jira_config.get("ticket_id_pattern")
+                        
+                        # Validation for credentials when enabled
+                        if not all([JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN]):
+                            print("Warning: Jira is enabled in config, but one or more required secrets (JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN) are missing from environment variables.", file=sys.stderr)
+                            config["jira"]["enabled"] = False # Disable if secrets are missing
+                else:
+                     config["jira"]["enabled"] = False # Ensure disabled if not a dict
+
                 print(f"Loaded configuration from {absolute_config_path}")
+                if config["jira"]["enabled"]:
+                    print("Jira integration is ENABLED.")
             else:
                  print(f"Configuration file {absolute_config_path} is empty, using defaults.")
 
@@ -78,7 +113,16 @@ jira:
     with open(dummy_path, 'w') as f:
         f.write(dummy_content)
         
-    print("--- Testing config loading --- ")
+    # Set dummy env vars for testing Jira credential loading
+    os.environ["JIRA_URL"] = "https://test.atlassian.net"
+    os.environ["JIRA_USER_EMAIL"] = "test@example.com"
+    os.environ["JIRA_API_TOKEN"] = "dummytoken"
+    # Simulate enabling Jira in the dummy file
+    dummy_content_jira_enabled = dummy_content.replace("project_keys: [\"TEST\"]", "enabled: true\n  project_keys: [\"TEST\"]")
+    with open(dummy_path, 'w') as f:
+        f.write(dummy_content_jira_enabled)
+        
+    print("--- Testing config loading (with Jira enabled) --- ")
     loaded_cfg = load_config(dummy_path)
     print("\nLoaded Config:")
     import json
@@ -90,5 +134,8 @@ jira:
     print("\nDefault Config:")
     print(json.dumps(default_cfg, indent=2))
 
-    # Clean up dummy file
-    os.remove(dummy_path) 
+    # Clean up dummy file and env vars
+    os.remove(dummy_path)
+    del os.environ["JIRA_URL"]
+    del os.environ["JIRA_USER_EMAIL"]
+    del os.environ["JIRA_API_TOKEN"] 
