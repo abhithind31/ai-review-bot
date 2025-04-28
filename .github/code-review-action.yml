@@ -9,9 +9,9 @@ on:
 
 jobs:
   review:
-    # Run only if the comment body starts with "/gemini-review"
+    # Run only if the comment body starts with "/ai-review"
     # and the comment is on a pull request.
-    if: startsWith(github.event.comment.body, '/gemini-review') && github.event.issue.pull_request
+    if: startsWith(github.event.comment.body, '/ai-review') && github.event.issue.pull_request
     runs-on: ubuntu-latest
     permissions:
       contents: read       # To read code contents (checkout)
@@ -19,47 +19,36 @@ jobs:
       issues: read         # To read issue (comment) details
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          # Checkout the PR branch head commit for accurate diff analysis
-          # Fetching the ref from the event payload ensures we get the code
-          # associated with the PR the comment was made on.
-          ref: ${{ github.event.issue.pull_request.head.sha }}
-          # Fetch depth 0 to get full history if needed for future features (e.g., comparing changes)
-          # fetch-depth: 0
+      # Removed checkout step as the composite action should handle checkout if needed,
+      # or the calling workflow should handle checking out the consuming repo's code.
+      # The composite action's 'runs' steps operate in the context of the runner
+      # with the consuming repository checked out at GITHUB_WORKSPACE.
+      # - name: Checkout code
+      #   uses: actions/checkout@v4
+      #   with:
+      #     ref: ${{ github.event.issue.pull_request.head.sha }}
+      #     fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11' # Or your preferred version
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          # Install from requirements.txt
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-
-      - name: Run AI Review
+      # The action itself (defined in action.yml) will handle setup and execution.
+      # We just need to call it using 'uses'.
+      - name: Run AI Review Bot Action
         id: run_ai_review # Give the step an ID for checking outcome
-        env:
-          # Essential secrets and context
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}       # Provided by GitHub Actions runner
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # User must set this repository secret
-          GITHUB_EVENT_PATH: ${{ github.event_path }}     # Path to the event payload JSON
-          GITHUB_REPOSITORY: ${{ github.repository }}     # owner/repo
-          GITHUB_API_URL: ${{ github.api_url }}           # URL for GitHub API (handles GH Enterprise)
-          # Pass PR number extracted from the event payload
-          PR_NUMBER: ${{ github.event.issue.number }}
-          # Optional: Pass model name if configurable
-          # GEMINI_MODEL_NAME: gemini-1.5-flash-latest
-
-          # Jira Secrets (only pass if potentially needed, config checks existence)
-          # Users must configure these secrets in the repository settings for Jira integration to work.
-          JIRA_URL: ${{ secrets.JIRA_URL }}               # e.g., https://your-domain.atlassian.net
-          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
-          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-        run: python src/main.py
+        # Assuming the action is in the same repository or specify owner/repo@ref
+        uses: ./ # Use the action defined in the root of this repository
+        with:
+          # Pass required AWS secrets
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }} # Set this secret in repo/org settings
+          # Optional: Override Bedrock model
+          # bedrock-model-id: 'anthropic.claude-3-haiku-20240307-v1:0'
+          # Optional: Override default config file path
+          # config-path: '.github/my-custom-config.yml'
+          # Optional: Provide Jira secrets if Jira integration is enabled in config
+          # GITHUB_TOKEN is automatically passed, but needed for Jira Client init check maybe?
+          # JIRA_URL: ${{ secrets.JIRA_URL }}
+          # JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          # JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
       # Optional: Add a reaction to the comment to indicate processing status
       - name: Add reaction to comment
@@ -75,24 +64,21 @@ jobs:
             // Get the outcome of the previous step using its ID
             const run_status = '${{ steps.run_ai_review.outcome }}'; 
             let reaction;
-
-            console.log(`AI Review script outcome: ${run_status}`);
-
-            if (run_status === 'success') {
-              reaction = 'rocket'; // Success
-            } else if (run_status === 'failure') {
-              reaction = 'confused'; // Failure
+            if (run_status == 'success') {
+              reaction = '+1'; // Thumbs up for success
+            } else if (run_status == 'failure') {
+              reaction = '-1'; // Thumbs down for failure
             } else {
-              reaction = 'eyes'; // Skipped or cancelled
+              reaction = 'eyes'; // Eyes for other statuses (skipped, cancelled)
             }
-            
             try {
-              console.log(`Adding reaction '${reaction}' to comment ID ${comment_id}`);
               await github.rest.reactions.createForIssueComment({
-                owner, repo, comment_id, content: reaction
+                owner,
+                repo,
+                comment_id,
+                content: reaction
               });
-              console.log("Reaction added successfully.");
             } catch (error) {
               console.error(`Failed to add reaction: ${error}`);
-              // Fail gracefully if reaction fails
+              // Don't fail the workflow if reaction fails
             } 

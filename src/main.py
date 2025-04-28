@@ -7,7 +7,7 @@ from functools import lru_cache # For caching file content
 
 # Import our modules
 from github_api import GitHubAPI
-from gemini_client import GeminiClient
+from bedrock_client import BedrockClient # Import Bedrock client
 from config import load_config
 from utils import parse_diff, should_exclude_file
 from utils import map_hunk_line_to_file_line
@@ -16,10 +16,12 @@ from jira_client import JiraClient # Added for Jira integration
 from jira_client import DEFAULT_JIRA_TICKET_PATTERN # Import the default pattern
 
 # Define the trigger command
-TRIGGER_COMMAND = "/gemini-review"
+TRIGGER_COMMAND = "/ai-review" # Changed trigger command
 
 # --- Prompt Template ---
 # Updated to include file context and specify focus
+# Note: This prompt structure is kept generic. The BedrockClient handles
+# wrapping it into the specific format required by Claude (e.g., Messages API).
 PROMPT_TEMPLATE = """
 You are an AI assistant reviewing a code change pull request.
 
@@ -266,11 +268,14 @@ def main():
         print("No files left to review after filtering. Exiting.")
         sys.exit(0)
 
-    # 8. Initialize Gemini Client
+    # 8. Initialize AI Client (Bedrock)
     try:
-        gemini = GeminiClient()
-    except ValueError as e:
-        print(f"Error initializing Gemini Client: {e}", file=sys.stderr)
+        ai_client = BedrockClient() # Initialize Bedrock client
+    except SystemExit as e: # BedrockClient uses sys.exit on init failure
+         print(f"Exiting due to Bedrock client initialization failure: {e}", file=sys.stderr)
+         sys.exit(1) # Ensure exit if client fails
+    except Exception as e: # Catch any other unexpected init errors
+        print(f"Error initializing Bedrock Client: {e}", file=sys.stderr)
         sys.exit(1)
 
     # 9. Process Hunks with Context
@@ -315,11 +320,12 @@ def main():
             # print(f"    Code Context Snippet:\n{code_context_snippet[:300]}...") # Debug context
             # print(f"    Prompt for Hunk {hunk_index + 1}:\n{prompt[:200]}...\n") # Debug prompt start
 
-            # d. Call Gemini API
+            # d. Call AI API (Bedrock)
             try:
-                review_result = gemini.get_review(prompt)
+                review_result = ai_client.get_review(prompt) # Call Bedrock client
             except Exception as e:
-                print(f"  Error calling Gemini API for hunk {hunk_index + 1} in {file_path}: {e}", file=sys.stderr)
+                # Use the generic term "AI API" in error messages now
+                print(f"  Error calling AI API for hunk {hunk_index + 1} in {file_path}: {e}", file=sys.stderr)
                 continue # Skip this hunk on error
 
             # e. Collect responses for posting
@@ -345,7 +351,8 @@ def main():
                     else:
                          print(f"  -> Warning: Could not map hunk line {hunk_line_num} in {file_path} to file line number. Comment may be on a deleted line or mapping failed.")
             else:
-                 print(f"  Warning: Invalid or empty response structure from Gemini for hunk {hunk_index + 1} in {file_path}")
+                 # Use the generic term "AI" in error messages now
+                 print(f"  Warning: Invalid or empty response structure from AI for hunk {hunk_index + 1} in {file_path}")
 
     # 10. Post review comments via GitHub API
     print(f"\n--- Posting {len(all_comments)} comments --- ")
@@ -381,8 +388,14 @@ def main():
 if __name__ == "__main__":
     # Simple check for required env vars for local testing
     # Add Jira vars check if you want to test that locally
-    required_vars = ["GITHUB_EVENT_PATH", "GITHUB_TOKEN", "GEMINI_API_KEY", "GITHUB_REPOSITORY", "GITHUB_API_URL", "PR_NUMBER"]
+    # Update required vars for Bedrock
+    required_vars = [
+        "GITHUB_EVENT_PATH", "GITHUB_TOKEN", 
+        "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", # Bedrock/AWS vars
+        "GITHUB_REPOSITORY", "GITHUB_API_URL", "PR_NUMBER"
+    ]
     # Optional: Add JIRA_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN if testing Jira locally
+    # Optional: Add BEDROCK_MODEL_ID if you want to override the default during local test
     
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     if missing_vars:

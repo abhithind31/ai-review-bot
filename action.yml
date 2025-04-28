@@ -1,6 +1,6 @@
 # action.yml
 name: 'AI Code Review Bot Action'
-description: 'Runs Gemini-based code reviews on PR hunks triggered by a comment.'
+description: 'Runs AI-based code reviews on PR hunks triggered by a comment, using AWS Bedrock.'
 author: 'Your Name or Organization' # Optional: Add author info
 
 inputs:
@@ -8,17 +8,23 @@ inputs:
     description: 'GitHub token for API calls. Defaults to the token provided by the workflow.'
     required: false # Set to false as we'll default it
     default: ${{ github.token }}
-  gemini-api-key:
-    description: 'API Key for the Google Gemini API.'
-    required: true # This must be provided by the user workflow
+  aws-access-key-id:
+    description: 'AWS Access Key ID for Bedrock access.'
+    required: true
+  aws-secret-access-key:
+    description: 'AWS Secret Access Key for Bedrock access.'
+    required: true
+  aws-region:
+    description: 'AWS Region where Bedrock model is hosted (e.g., us-east-1).'
+    required: true
+  bedrock-model-id:
+    description: 'AWS Bedrock model ID to use (e.g., anthropic.claude-v2:1, anthropic.claude-3-sonnet-20240229-v1:0).'
+    required: false
+    default: 'anthropic.claude-3-sonnet-20240229-v1:0' # Default to a recent Claude model
   config-path:
-    description: 'Path to the gemini-reviewer.yml config file in the consuming repo.'
+    description: 'Path to the ai-reviewer.yml config file in the consuming repo.'
     required: false
-    default: '.github/gemini-reviewer.yml'
-  gemini-model-name:
-    description: 'Name of the Gemini model to use (e.g., gemini-1.5-flash-latest, gemini-pro).'
-    required: false
-    default: 'gemini-1.5-flash-latest' # Default model
+    default: '.github/ai-reviewer.yml' # Renamed config file for clarity
 
 runs:
   using: 'composite'
@@ -36,6 +42,8 @@ runs:
       run: |
         echo "Installing dependencies from ${{ github.action_path }}/requirements.txt"
         python -m pip install --upgrade pip
+        # Ensure google-generativeai is removed if present in requirements.txt from previous versions
+        # pip uninstall google-generativeai -y || true 
         pip install -r ${{ github.action_path }}/requirements.txt
 
     - name: Run AI Review Script
@@ -43,16 +51,18 @@ runs:
       env:
         # Map action inputs to environment variables expected by the script
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        GEMINI_API_KEY: ${{ inputs.gemini-api-key }}
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+        AWS_REGION: ${{ inputs.aws-region }}
+        BEDROCK_MODEL_ID: ${{ inputs.bedrock-model-id }}
         CONFIG_PATH: ${{ inputs.config-path }}
-        GEMINI_MODEL_NAME: ${{ inputs.gemini-model-name }}
-
-        # Pass standard context variables expected by the script
-        # These come from the *calling* workflow's context
+        # Pass standard GitHub Actions environment variables needed by the script
         GITHUB_EVENT_PATH: ${{ github.event_path }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_API_URL: ${{ github.api_url }}
-        PR_NUMBER: ${{ github.event.issue.number }} # Assuming trigger is issue_comment on a PR
+        # Extract PR number from the event context
+        # This assumes the action is triggered by an issue_comment on a PR
+        PR_NUMBER: ${{ github.event.issue.number }}
 
-      # Run the script located within this action's repository code
+      # Run the main script located within the action's directory
       run: python ${{ github.action_path }}/src/main.py 
