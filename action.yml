@@ -14,6 +14,9 @@ inputs:
   aws-secret-access-key:
     description: 'AWS Secret Access Key for Bedrock access.'
     required: true
+  aws-session-token:
+    description: 'AWS Session Token (required if using temporary credentials/assumed roles).'
+    required: false # Set to true if temporary credentials are *always* expected
   aws-region:
     description: 'AWS Region where Bedrock model is hosted (e.g., us-east-1).'
     required: true
@@ -53,6 +56,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
         AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+        AWS_SESSION_TOKEN: ${{ inputs.aws-session-token }}
         AWS_REGION: ${{ inputs.aws-region }}
         BEDROCK_MODEL_ID: ${{ inputs.bedrock-model-id }}
         CONFIG_PATH: ${{ inputs.config-path }}
