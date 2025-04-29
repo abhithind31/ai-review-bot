@@ -39,16 +39,19 @@ jobs:
           # Pass required AWS secrets
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} # Required if using temporary credentials
           aws-region: ${{ secrets.AWS_REGION }} # Set this secret in repo/org settings
           # Optional: Override Bedrock model
           # bedrock-model-id: 'anthropic.claude-3-haiku-20240307-v1:0'
           # Optional: Override default config file path
           # config-path: '.github/my-custom-config.yml'
-          # Optional: Provide Jira secrets if Jira integration is enabled in config
-          # GITHUB_TOKEN is automatically passed, but needed for Jira Client init check maybe?
-          # JIRA_URL: ${{ secrets.JIRA_URL }}
-          # JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
-          # JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          
+          # --- Optional: JIRA Integration --- 
+          # Provide these secrets if you have enabled Jira integration 
+          # in your .github/ai-reviewer.yml config file (Enabled by default).
+          jira-url: ${{ secrets.JIRA_URL }}
+          jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
+          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
 
       # Optional: Add a reaction to the comment to indicate processing status
       - name: Add reaction to comment

@@ -34,10 +34,10 @@ custom_instructions: |
   Do not suggest purely stylistic changes unless they violate the style guide.
   Do not suggest adding code comments.
 
-# Optional: Jira integration settings (Phase 3)
+# Optional: Jira integration settings
 jira:
   # Enable Jira integration (true/false)
-  enabled: false # Set to true to activate Jira integration
+  enabled: true # Set to true to activate Jira integration by default
   
   # Base URL of your Jira instance (e.g., "https://your-domain.atlassian.net")
   # Required if enabled is true. Store as a repository secret: JIRA_URL

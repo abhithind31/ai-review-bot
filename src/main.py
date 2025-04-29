@@ -110,6 +110,11 @@ def main():
              print("Comment is not on a Pull Request. Skipping.")
              sys.exit(0)
         pr_number = event_payload["issue"]["number"]
+        # Extract source branch name from the payload for potential Jira key extraction
+        pr_branch_name = event_payload.get("issue", {}).get("pull_request", {}).get("head", {}).get("ref", "")
+        if not pr_branch_name:
+             print("Warning: Could not extract PR source branch name from event payload.", file=sys.stderr)
+             
     except KeyError as e:
         print(f"Error: Missing expected key in event payload: {e}", file=sys.stderr)
         print("Payload dump:", json.dumps(event_payload, indent=2))
@@ -199,34 +204,37 @@ def main():
     ticket_keys = [] # Initialize empty list
 
     if jira_client:
-        # Determine which key to use: Explicit command > PR Title
+        # Determine which key to use: Explicit command > PR Branch Name
         if explicit_jira_key:
             print("\n--- Fetching Jira Context (Using Explicit Key from Command) --- ")
             ticket_keys = [explicit_jira_key]
             print(f"  Using explicit key: {explicit_jira_key}")
+        elif pr_branch_name: # Check branch name only if no explicit key and branch name was found
+            print(f"\n--- Fetching Jira Context (Attempting PR Branch Name Extraction: '{pr_branch_name}') --- ")
+            ticket_key_from_branch = None
+            # Use the pattern (default or custom) to search within the branch name
+            validation_pattern = config.get("jira", {}).get("ticket_id_pattern") or DEFAULT_JIRA_TICKET_PATTERN
+            try:
+                match = re.search(validation_pattern, pr_branch_name)
+                if match:
+                    ticket_key_from_branch = match.group(1) # Get the first captured group
+                    # Optional: Convert to uppercase like the bash example? Depends on requirements.
+                    # ticket_key_from_branch = ticket_key_from_branch.upper()
+                    print(f"  Found potential Jira key in branch name: {ticket_key_from_branch}")
+                    ticket_keys = [ticket_key_from_branch] # Use this key
+                else:
+                    print(f"  Branch name does not contain Jira key pattern '{validation_pattern}'.")
+            except re.error as e:
+                print(f"  Error searching Jira key pattern '{validation_pattern}' in branch name: {e}", file=sys.stderr)
+            except IndexError:
+                 print(f"  Error: Jira key pattern '{validation_pattern}' does not contain a capturing group needed to extract the key.", file=sys.stderr)
         else:
-            print("\n--- Fetching Jira Context (Attempting PR Title Extraction) --- ")
-            pr_title = pr_details.get('title', '')
-            ticket_key_from_title = None
+            # This case happens if no explicit key and branch name couldn't be extracted
+             print("\n--- Skipping Jira Context Fetch --- ")
+             print("  No explicit Jira key provided and could not determine PR branch name.")
             
-            if ':' in pr_title:
-                potential_key = pr_title.split(':', 1)[0].strip()
-                # Validate the extracted key against the pattern (default or custom)
-                validation_pattern = config.get("jira", {}).get("ticket_id_pattern") or DEFAULT_JIRA_TICKET_PATTERN
-                try:
-                    if re.fullmatch(validation_pattern, potential_key):
-                        ticket_key_from_title = potential_key
-                        print(f"  Found potential Jira key in title: {ticket_key_from_title}")
-                        ticket_keys = [ticket_key_from_title] # Use this key
-                    else:
-                        print(f"  Text '{potential_key}' before colon in title does not match Jira key pattern '{validation_pattern}'.")
-                except re.error as e:
-                    print(f"  Error validating Jira key pattern '{validation_pattern}': {e}", file=sys.stderr)
-            else:
-                print("  PR title does not contain ':', cannot extract Jira key from title.")
-            
-            if not ticket_keys:
-                print("  No Jira key found in command or PR title prefix.")
+        if not ticket_keys and not explicit_jira_key:
+            print("  No Jira key found in command or PR branch name.")
 
         if ticket_keys:
             print(f"  Fetching details for keys: {ticket_keys}")
@@ -244,6 +252,30 @@ def main():
         else:
             print("  No relevant Jira ticket keys found in PR title or description.")
         print("---------------------------")
+
+    # 6.3 Post Jira Status Comment to PR
+    jira_status_message = None
+    if not config.get("jira", {}).get("enabled"):
+        jira_status_message = "ℹ️ Jira integration is disabled in the configuration."
+    elif not jira_client:
+        # This case covers if init failed even if enabled=true in config
+        jira_status_message = "⚠️ Jira integration was enabled, but the client failed to initialize (check credentials/URL in secrets and action logs)."
+    elif not ticket_keys:
+        jira_status_message = "ℹ️ Jira integration enabled, but no relevant ticket key found in the trigger command or PR branch name."
+    elif not all_ticket_details: # Keys found, but fetching failed
+        jira_status_message = f"⚠️ Jira integration enabled, found key(s) `{', '.join(ticket_keys)}`, but failed to fetch details from Jira."
+    else: # Keys found and details fetched
+        jira_status_message = f"✅ Jira integration enabled, successfully fetched context for key(s) `{', '.join(ticket_keys)}` and included it in the review prompt."
+    
+    if jira_status_message:
+        print(f"\n--- Posting Jira Status Comment ---
+{jira_status_message}
+---------------------------------")
+        try:
+            github_api.post_pr_comment(pr_number, jira_status_message)
+        except Exception as e:
+            # Log error but don't fail the whole action if status comment fails
+            print(f"Warning: Failed to post Jira status comment to PR #{pr_number}: {e}", file=sys.stderr)
 
     # 7. Parse Diff and Filter files
     print("\n--- Parsing Diff and Filtering Files ---")
