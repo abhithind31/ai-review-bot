@@ -16,11 +16,12 @@ This repository contains a GitHub Action that uses AI (AWS Bedrock - Claude) to 
 To use this action in your own repository:
 
 1.  **Ensure Action Permissions:** Your organization/repository settings might need to allow actions created within the organization to run (`Settings` -> `Actions` -> `General`).
-2.  **Set Secrets:** Add your AWS Credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) and the target `AWS_REGION` as **Repository Secrets** or **Organization Secrets**. The action requires these to authenticate with AWS Bedrock.
+2.  **Set Secrets:** Add your AWS Credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) and the target `AWS_REGION` as **Repository Secrets** or **Organization Secrets**. If using temporary credentials (e.g., from assuming an IAM role or AWS SSO), you **must** also provide the `AWS_SESSION_TOKEN`.
     *   `AWS_ACCESS_KEY_ID`: Your AWS Access Key ID.
     *   `AWS_SECRET_ACCESS_KEY`: Your AWS Secret Access Key.
+    *   `AWS_SESSION_TOKEN`: (Optional, but required for temporary credentials) Your AWS Session Token.
     *   `AWS_REGION`: The AWS region where your Bedrock model is available (e.g., `us-east-1`).
-    *(Alternatively, configure AWS credentials for your GitHub Actions runner using OIDC or other secure methods if preferred.)*
+    *(Alternatively, configure AWS credentials for your GitHub Actions runner using OIDC or other secure methods if preferred. If using methods that automatically configure environment variables like OIDC, you might not need to pass these secrets explicitly.)*
 3.  **(Optional) Configuration File:** Create a `.github/ai-reviewer.yml` file in your repository to customize file exclusions and AI review instructions. See the example `ai-reviewer.yml` in this repository's root for the format.
 4.  **Create Workflow File:** Add a workflow file (e.g., `.github/workflows/ai-code-review.yml`) to your repository:
 
@@ -52,6 +53,7 @@ jobs:
           # Pass AWS secrets to the action
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} # Required if using temporary credentials
           aws-region: ${{ secrets.AWS_REGION }} # e.g., 'us-east-1' or set as secret
           # Optional: Override the default Bedrock model ID
           # bedrock-model-id: 'anthropic.claude-v2:1'
@@ -68,6 +70,7 @@ jobs:
 *   `github-token`: (Optional) GitHub token. Defaults to `${{ github.token }}`.
 *   `aws-access-key-id`: (Required) AWS Access Key ID.
 *   `aws-secret-access-key`: (Required) AWS Secret Access Key.
+*   `aws-session-token`: (Optional) AWS Session Token. Required if using temporary AWS credentials.
 *   `aws-region`: (Required) AWS Region for Bedrock.
 *   `bedrock-model-id`: (Optional) Bedrock model ID. Defaults to `anthropic.claude-3-sonnet-20240229-v1:0`.
 *   `config-path`: (Optional) Path to the `.yml` config file in the consuming repo. Defaults to `.github/ai-reviewer.yml`.
@@ -79,7 +82,7 @@ This repository contains the source code (`src/`), dependencies (`requirements.t
 To contribute:
 1. Clone the repository.
 2. Make changes to the Python code in `src/`.
-3. Test locally if possible (requires setting environment variables like `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `GITHUB_EVENT_PATH`, `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, `GITHUB_API_URL`, `PR_NUMBER` manually).
+3. Test locally if possible (requires setting environment variables like `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `GITHUB_EVENT_PATH`, `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, `GITHUB_API_URL`, `PR_NUMBER` manually. Include `AWS_SESSION_TOKEN` if testing with temporary credentials).
 4. Update `action.yml` if inputs/outputs change.
 5. Commit, push, and create a Pull Request.
 6. Remember to create new version tags (e.g., `v1.1`) for releases. 
