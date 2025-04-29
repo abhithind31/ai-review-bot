@@ -263,14 +263,17 @@ def main():
     elif not ticket_keys:
         jira_status_message = "ℹ️ Jira integration enabled, but no relevant ticket key found in the trigger command or PR branch name."
     elif not all_ticket_details: # Keys found, but fetching failed
-        jira_status_message = f"⚠️ Jira integration enabled, found key(s) `{', '.join(ticket_keys)}`, but failed to fetch details from Jira."
+        # Format keys safely for the f-string
+        formatted_keys = '`, `'.join(ticket_keys)
+        jira_status_message = f"⚠️ Jira integration enabled, found key(s) `{formatted_keys}`, but failed to fetch details from Jira."
     else: # Keys found and details fetched
-        jira_status_message = f"✅ Jira integration enabled, successfully fetched context for key(s) `{', '.join(ticket_keys)}` and included it in the review prompt."
+        # Format keys safely for the f-string
+        formatted_keys = '`, `'.join(ticket_keys)
+        jira_status_message = f"✅ Jira integration enabled, successfully fetched context for key(s) `{formatted_keys}` and included it in the review prompt."
     
     if jira_status_message:
-        print(f"\n--- Posting Jira Status Comment ---
-{jira_status_message}
----------------------------------")
+        # Correctly formatted print statement for the Jira status
+        print(f"\n--- Posting Jira Status Comment ---\n{jira_status_message}\n---------------------------------")
         try:
             github_api.post_pr_comment(pr_number, jira_status_message)
         except Exception as e:
