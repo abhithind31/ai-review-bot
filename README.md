@@ -51,6 +51,13 @@ jobs:
       issues: read
 
     steps:
+      # IMPORTANT: Checkout the code so the action can access config files (e.g., ai-reviewer.yml)
+      - name: Checkout code
+        uses: actions/checkout@v4
+        # Optional: Fetch the specific PR head commit if needed for pristine state
+        # ref: ${{ github.event.issue.pull_request.head.sha }}
+        # fetch-depth: 0 # Fetch full history if needed by other steps
+
       - name: Run AI Review Bot Action
         # Replace your-org/ai-review-bot with your actual org/repo name
         # Replace @vX with the specific tag/branch/commit SHA you want to use

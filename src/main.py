@@ -110,11 +110,6 @@ def main():
              print("Comment is not on a Pull Request. Skipping.")
              sys.exit(0)
         pr_number = event_payload["issue"]["number"]
-        # Extract source branch name from the payload for potential Jira key extraction
-        pr_branch_name = event_payload.get("issue", {}).get("pull_request", {}).get("head", {}).get("ref", "")
-        if not pr_branch_name:
-             print("Warning: Could not extract PR source branch name from event payload.", file=sys.stderr)
-             
     except KeyError as e:
         print(f"Error: Missing expected key in event payload: {e}", file=sys.stderr)
         print("Payload dump:", json.dumps(event_payload, indent=2))
@@ -148,13 +143,19 @@ def main():
         print(f"Error initializing GitHub API: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 5. Fetch PR details (diff and commit ID)
+    # 5. Fetch PR details (diff, commit ID, and branch name)
     commit_id = None
+    pr_branch_name = None # Initialize branch name variable
     try:
         pr_details, diff_content = github_api.get_pr_details(pr_number)
         if pr_details is None or diff_content is None:
             print(f"Error: Could not fetch PR details or diff for PR #{pr_number}.", file=sys.stderr)
             sys.exit(1)
+        
+        # Get branch name from the fetched details
+        pr_branch_name = pr_details.get("branch_name")
+        if not pr_branch_name:
+             print("Warning: Could not extract PR source branch name from API details.", file=sys.stderr)
 
         # Fetch commit_id needed for fetching file content and posting comments
         commit_id = github_api.get_pr_commit_id(pr_number)
@@ -167,6 +168,7 @@ def main():
         description = pr_details.get('description')
         description_snippet = (description[:100] + '...') if description else 'N/A'
         print(f"Description: {description_snippet}")
+        print(f"Branch Name: {pr_branch_name or 'N/A'}") # Print fetched branch name
         print(f"Using commit ID: {commit_id}")
 
     except Exception as e:
@@ -209,7 +211,7 @@ def main():
             print("\n--- Fetching Jira Context (Using Explicit Key from Command) --- ")
             ticket_keys = [explicit_jira_key]
             print(f"  Using explicit key: {explicit_jira_key}")
-        elif pr_branch_name: # Check branch name only if no explicit key and branch name was found
+        elif pr_branch_name: # Check branch name (now fetched from API details)
             print(f"\n--- Fetching Jira Context (Attempting PR Branch Name Extraction: '{pr_branch_name}') --- ")
             ticket_key_from_branch = None
             # Use the pattern (default or custom) to search within the branch name
@@ -229,9 +231,9 @@ def main():
             except IndexError:
                  print(f"  Error: Jira key pattern '{validation_pattern}' does not contain a capturing group needed to extract the key.", file=sys.stderr)
         else:
-            # This case happens if no explicit key and branch name couldn't be extracted
+            # This case happens if no explicit key and branch name couldn't be extracted from API
              print("\n--- Skipping Jira Context Fetch --- ")
-             print("  No explicit Jira key provided and could not determine PR branch name.")
+             print("  No explicit Jira key provided and could not determine PR branch name from API.")
             
         if not ticket_keys and not explicit_jira_key:
             print("  No Jira key found in command or PR branch name.")

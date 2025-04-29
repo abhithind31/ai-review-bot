@@ -18,7 +18,7 @@ class GitHubAPI:
         self.api_base_url = os.getenv("GITHUB_API_URL", "https://api.github.com") # Default to public GitHub API
 
     def get_pr_details(self, pr_number):
-        """Fetches PR title, description, and diff."""
+        """Fetches PR title, description, source branch name, and diff."""
         pr_url = f"{self.api_base_url}/repos/{self.repo}/pulls/{pr_number}"
         diff_url = f"{pr_url}.diff"
         
@@ -26,8 +26,8 @@ class GitHubAPI:
         diff_content = None
 
         try:
-            # Get PR metadata (title, body)
-            # Temporarily switch Accept header for JSON response
+            # Get PR metadata (title, body, head ref)
+            # Use standard JSON Accept header
             json_headers = self.headers.copy()
             json_headers["Accept"] = "application/vnd.github.v3+json"
             response_pr = requests.get(pr_url, headers=json_headers)
@@ -35,17 +35,19 @@ class GitHubAPI:
             pr_data = response_pr.json()
             pr_details = {
                 "title": pr_data.get("title", ""),
-                "description": pr_data.get("body", "")
+                "description": pr_data.get("body", ""),
+                "branch_name": pr_data.get("head", {}).get("ref", "") # Extract head ref
             }
             
-            # Get PR diff
-            response_diff = requests.get(diff_url, headers=self.headers)
+            # Get PR diff (Use diff Accept header)
+            diff_headers = self.headers.copy()
+            diff_headers["Accept"] = "application/vnd.github.v3.diff"
+            response_diff = requests.get(diff_url, headers=diff_headers)
             response_diff.raise_for_status()
             diff_content = response_diff.text
 
         except requests.exceptions.RequestException as e:
             print(f"Error fetching PR details for #{pr_number}: {e}")
-            # Consider how to handle errors - maybe raise exception for main.py?
             return None, None
 
         return pr_details, diff_content
