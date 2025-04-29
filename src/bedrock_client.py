@@ -120,7 +120,7 @@ class BedrockClient:
                 print(f"Warning: Invalid JSON response format from Bedrock: 'reviews' key missing or not a list. Response: {response_body_text}", file=sys.stderr)
                 return {"reviews": []} # Return empty on format error
 
-            # Validate individual review items (similar to GeminiClient validation)
+            # Validate individual review items
             valid_reviews = []
             for item in review_data["reviews"]:
                 if not isinstance(item, dict) or not all(k in item for k in ("lineNumber", "reviewComment")):

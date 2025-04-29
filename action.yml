@@ -81,6 +81,8 @@ runs:
         JIRA_URL: ${{ inputs.jira-url }}
         JIRA_USER_EMAIL: ${{ inputs.jira-user-email }}
         JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+        # Explicitly pass the workspace path for robust file path calculation
+        GITHUB_WORKSPACE: ${{ github.workspace }}
 
       # Run the main script located within the action's directory
       run: python ${{ github.action_path }}/src/main.py 

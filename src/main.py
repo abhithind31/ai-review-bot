@@ -20,8 +20,6 @@ TRIGGER_COMMAND = "/ai-review" # Changed trigger command
 
 # --- Prompt Template ---
 # Updated to include file context and specify focus
-# Note: This prompt structure is kept generic. The BedrockClient handles
-# wrapping it into the specific format required by Claude (e.g., Messages API).
 PROMPT_TEMPLATE = """
 You are an AI assistant reviewing a code change pull request.
 
