@@ -4,9 +4,9 @@ This repository contains a GitHub Action that uses AI (AWS Bedrock - Claude) to 
 
 ## Features
 
-*   Trigger review via PR comment (e.g., `/ai-review`).
+*   Trigger review via PR comment (e.g., `/clara-review`).
 *   Hunk-based analysis for focused feedback.
-*   Configurable review instructions and file exclusion patterns via a `.github/ai-reviewer.yml` file **in the consuming repository**.
+*   Configurable review instructions and file exclusion patterns via a `.github/clara-reviewer.yml` file **in the consuming repository**.
 *   Posts review comments directly to the relevant lines in the PR.
 *   Configurable Bedrock model (defaults to `anthropic.claude-3-sonnet-20240229-v1:0`).
 *   Jira integration for context-aware reviews (enabled by default).
@@ -22,13 +22,13 @@ To use this action in your own repository:
     *   `AWS_SESSION_TOKEN`: (Optional, but required for temporary credentials) Your AWS Session Token.
     *   `AWS_REGION`: The AWS region where your Bedrock model is available (e.g., `us-east-1`).
     *(Alternatively, configure AWS credentials for your GitHub Actions runner using OIDC or other secure methods if preferred. If using methods that automatically configure environment variables like OIDC, you might not need to pass these secrets explicitly.)*
-3.  **(Optional) Configuration File:** Create a `.github/ai-reviewer.yml` file in your repository to customize file exclusions, AI review instructions, or disable Jira integration (`jira.enabled: false`). See the example `ai-reviewer.yml` (Jira enabled by default).
+3.  **(Optional) Configuration File:** Create a `.github/clara-reviewer.yml` file in your repository to customize file exclusions, AI review instructions, or disable Jira integration (`jira.enabled: false`). See the example `clara-reviewer.yml` (Jira enabled by default).
 4.  **(Required for Jira) Set Jira Secrets:** Since Jira integration is enabled by default, you **must** provide your Jira instance URL, a user email associated with an API token, and the API token itself as secrets (`JIRA_URL`, `JIRA_USER_EMAIL`, `JIRA_API_TOKEN`) in your repository/organization settings, unless you disable Jira in the config file.
     *   Pass these secrets to the action using the `jira-url`, `jira-user-email`, and `jira-api-token` inputs (see workflow example below).
     *   The action fetches context for the review by identifying a Jira key using the following order:
-        1.  **Explicit Key in Command:** Looks for a valid Jira key provided directly after the trigger command (e.g., `/ai-review PROJ-123`).
+        1.  **Explicit Key in Command:** Looks for a valid Jira key provided directly after the trigger command (e.g., `/clara-review PROJ-123`).
         2.  **PR Source Branch Name:** If no key is found in the command, it searches the Pull Request's source branch name for the first occurrence of a pattern matching the Jira key format (e.g., extracting `PROJ-123` from `feature/PROJ-123-new-login`).
-    *   You can customize the regex pattern used for extraction (`ticket_id_pattern`) in the `ai-reviewer.yml` config file.
+    *   You can customize the regex pattern used for extraction (`ticket_id_pattern`) in the `clara-reviewer.yml` config file.
 5.  **Create Workflow File:** Add a workflow file (e.g., `.github/workflows/ai-code-review.yml`) to your repository:
 
 ```yaml
@@ -42,7 +42,7 @@ on:
 jobs:
   review:
     # Run only if comment is on a PR and starts with the trigger command
-    if: startsWith(github.event.comment.body, '/ai-review') && github.event.issue.pull_request
+    if: startsWith(github.event.comment.body, '/clara-review') && github.event.issue.pull_request
     runs-on: ubuntu-latest
     # Permissions needed by the action to read code and write comments
     permissions:
@@ -51,7 +51,7 @@ jobs:
       issues: read
 
     steps:
-      # IMPORTANT: Checkout the code so the action can access config files (e.g., ai-reviewer.yml)
+      # IMPORTANT: Checkout the code so the action can access config files (e.g., clara-reviewer.yml)
       - name: Checkout code
         uses: actions/checkout@v4
         # Optional: Fetch the specific PR head commit if needed for pristine state
@@ -82,7 +82,7 @@ jobs:
           # github-token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
 ```
 
-6.  **Trigger:** Comment `/ai-review` on a Pull Request in your repository.
+6.  **Trigger:** Comment `/clara-review` on a Pull Request in your repository.
 
 ## Action Inputs
 
@@ -92,7 +92,7 @@ jobs:
 *   `aws-session-token`: (Optional) AWS Session Token. Required if using temporary AWS credentials.
 *   `aws-region`: (Required) AWS Region for Bedrock.
 *   `bedrock-model-id`: (Optional) Bedrock model ID. Defaults to `anthropic.claude-3-sonnet-20240229-v1:0`.
-*   `config-path`: (Optional) Path to the `.yml` config file in the consuming repo. Defaults to `.github/ai-reviewer.yml`.
+*   `config-path`: (Optional) Path to the `.yml` config file in the consuming repo. Defaults to `.github/clara-reviewer.yml`.
 *   `jira-url`: (Optional) URL of your Jira instance. Required if Jira integration is enabled (default).
 *   `jira-user-email`: (Optional) Email of the Jira user for authentication. Required if Jira integration is enabled (default).
 *   `jira-api-token`: (Optional) Jira API token for authentication. Required if Jira integration is enabled (default).

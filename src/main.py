@@ -16,7 +16,7 @@ from jira_client import JiraClient # Added for Jira integration
 from jira_client import DEFAULT_JIRA_TICKET_PATTERN # Import the default pattern
 
 # Define the trigger command
-TRIGGER_COMMAND = "/ai-review" # Changed trigger command
+TRIGGER_COMMAND = "/clara-review" # Changed trigger command
 
 # --- Prompt Template ---
 # Updated to include file context and specify focus

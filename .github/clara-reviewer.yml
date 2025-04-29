@@ -1,0 +1,62 @@
+# .github/clara-reviewer.yml
+
+# File exclusion patterns (uses gitignore glob syntax)
+# Defaults to empty if not provided
+exclude:
+  - "**/docs/**"
+  - "**/test/**"       # Common directory names for tests
+  - "**/tests/**"
+  - "**/__tests__/**"
+  - "**/__snapshots__/**"
+  - "*.lock"
+  - "*.log"
+  - "package-lock.json"
+  - "yarn.lock"
+  - "Pipfile.lock"
+  - "poetry.lock"
+  - "go.sum"
+  - "*.min.js"        # Exclude minified JS
+  - "*.min.css"       # Exclude minified CSS
+  - "**/dist/**"        # Common build output directory
+  - "**/build/**"
+  - "**/target/**"      # Common build output (Java/Rust)
+  - "**/*.config.js"   # Common config files
+  - "**/*.config.ts"
+  - "**/config/**"      # Common config directory
+
+# Custom review instructions for the AI model
+# These will be added to the prompt for each hunk review.
+# Keep it concise and focused.
+custom_instructions: |
+  Focus on identifying potential bugs, security vulnerabilities, and performance bottlenecks.
+  Ensure the code adheres to our company's Python style guide (PEP 8 with 100 char line limit).
+  Verify that logging is used appropriately for errors and significant events.
+  Do not suggest purely stylistic changes unless they violate the style guide.
+  Do not suggest adding code comments.
+
+# Optional: Jira integration settings
+jira:
+  # Enable Jira integration (true/false)
+  enabled: true # Set to true to activate Jira integration by default
+  
+  # Base URL of your Jira instance (e.g., "https://your-domain.atlassian.net")
+  # Required if enabled is true. Store as a repository secret: JIRA_URL
+  # url: "" # Example: https://your-company.atlassian.net
+
+  # Email of the Jira user for authentication (associated with the API token below)
+  # Required if enabled is true. Store as a repository secret: JIRA_USER_EMAIL
+  # user_email: ""
+
+  # API Token for Jira authentication (generate from Jira user profile settings)
+  # Required if enabled is true. Store as a repository secret: JIRA_API_TOKEN
+  # Note: Never commit the API token directly here!
+  
+  # Optional: Project keys to *restrict* the search to. 
+  # If empty or not provided, any key matching the pattern below will be considered.
+  # project_keys:
+  #   - "PROJ"
+  #   - "CORE"
+
+  # Optional: Custom regex pattern to extract ticket IDs from PR titles/descriptions.
+  # Defaults to finding keys like ABC-123. Escape backslashes if needed.
+  # ticket_id_pattern: "([A-Z]{2,10}-\\d+)" 

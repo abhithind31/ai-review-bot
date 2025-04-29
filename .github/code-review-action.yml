@@ -9,9 +9,9 @@ on:
 
 jobs:
   review:
-    # Run only if the comment body starts with "/ai-review"
+    # Run only if the comment body starts with "/clara-review"
     # and the comment is on a pull request.
-    if: startsWith(github.event.comment.body, '/ai-review') && github.event.issue.pull_request
+    if: startsWith(github.event.comment.body, '/clara-review') && github.event.issue.pull_request
     runs-on: ubuntu-latest
     permissions:
       contents: read       # To read code contents (checkout)

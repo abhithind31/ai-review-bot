@@ -7,7 +7,7 @@ import sys
 # Get default config path from environment variable set by action.yml, 
 # defaulting to the standard path if not set (e.g., during local testing)
 # Renamed default config file
-DEFAULT_CONFIG_PATH_IN_REPO = os.getenv("CONFIG_PATH", ".github/ai-reviewer.yml") 
+DEFAULT_CONFIG_PATH_IN_REPO = os.getenv("CONFIG_PATH", ".github/clara-reviewer.yml") 
 DEFAULT_INSTRUCTIONS = "Focus on bugs, security, and performance. Do not suggest code comments."
 
 # Jira credentials from environment variables (set by the workflow)
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     print("\n--- Testing config loading (Simulated File) ---")
     # Create a dummy config file in the workspace
     workspace = os.getenv("GITHUB_WORKSPACE", ".")
-    dummy_path_rel = ".github/ai-reviewer.yml"
+    dummy_path_rel = ".github/clara-reviewer.yml"
     dummy_path_abs = os.path.join(workspace, dummy_path_rel)
     os.makedirs(os.path.dirname(dummy_path_abs), exist_ok=True)
     dummy_content = """

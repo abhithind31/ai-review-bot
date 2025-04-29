@@ -25,9 +25,9 @@ inputs:
     required: false
     default: 'anthropic.claude-3-sonnet-20240229-v1:0' # Default to a recent Claude model
   config-path:
-    description: 'Path to the ai-reviewer.yml config file in the consuming repo.'
+    description: 'Path to the clara-reviewer.yml config file in the consuming repo.'
     required: false
-    default: '.github/ai-reviewer.yml' # Renamed config file for clarity
+    default: '.github/clara-reviewer.yml' # Renamed config file
   jira-url:
     description: 'JIRA URL for integration.'
     required: false
