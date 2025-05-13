@@ -9,21 +9,9 @@ inputs:
     required: false
     default: ${{ github.token }}
 
-  # AWS OIDC and Role Chaining Configuration (from secrets)
-  oidc-role-arn:
-    description: 'ARN of the IAM role that trusts GitHub OIDC for the initial AWS connection.'
-    required: true
-  oidc-role-aws-region:
-    description: 'AWS region where the OIDC IAM role is located.'
-    required: true
-  bedrock-role-arn:
-    description: 'ARN of the IAM role that will be assumed for Bedrock access (can be in the same or different account as OIDC role).'
-    required: true
-  bedrock-aws-region:
-    description: 'AWS Region where Bedrock model is hosted (e.g., us-east-1). This is for the Bedrock service itself.'
-    required: true
+  # AWS and Jira configurations are now sourced from this action repository's secrets.
+  # No specific inputs needed from the consuming workflow for these.
 
-  # Bedrock Model Configuration
   bedrock-model-id:
     description: 'AWS Bedrock model ID to use.'
     required: false
@@ -33,26 +21,16 @@ inputs:
     required: false
     default: '.github/clara-reviewer.yml'
 
-  # Jira Configuration (from secrets)
-  jira-url:
-    description: 'JIRA URL for integration.'
-    required: false # Make optional if Jira is not always used
-  jira-user-email:
-    description: 'JIRA user email for integration.'
-    required: false # Make optional
-  jira-api-token:
-    description: 'JIRA API token for integration.'
-    required: false # Make optional
-
-  # aws-access-key-id, aws-secret-access-key, aws-session-token are effectively unused when OIDC is handled internally.
+  # The following inputs remain technically defined but are effectively superseded by internal OIDC
+  # and direct secret usage. They could be used in a non-OIDC manual credential scenario.
   aws-access-key-id:
-    description: 'AWS Access Key ID. (Typically not needed if using internal OIDC)'
+    description: 'AWS Access Key ID. (Typically not used with internal OIDC)'
     required: false
   aws-secret-access-key:
-    description: 'AWS Secret Access Key. (Typically not needed if using internal OIDC)'
+    description: 'AWS Secret Access Key. (Typically not used with internal OIDC)'
     required: false
   aws-session-token:
-    description: 'AWS Session Token. (Typically not needed if using internal OIDC)'
+    description: 'AWS Session Token. (Typically not used with internal OIDC)'
     required: false
 
 runs:
@@ -61,11 +39,11 @@ runs:
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ inputs.oidc-role-arn }}
+        role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}         # Secret from this action repo
         role-chaining: true
-        aws-region: ${{ inputs.oidc-role-aws-region }} # Region for the initial OIDC role assumption
+        aws-region: ${{ secrets.OIDC_ROLE_AWS_REGION }}    # Secret from this action repo
       env:
-        AWS_ROLE_ARN: ${{ inputs.bedrock-role-arn }} # Role to chain to for Bedrock access
+        AWS_ROLE_ARN: ${{ secrets.BEDROCK_ROLE_ARN }}      # Secret from this action repo
         AWS_ROLE_SESSION_NAME: GitHubActionAICodeReview
 
     - name: Set up Python
@@ -85,15 +63,15 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         # AWS credentials are set by the 'Configure AWS Credentials' step above.
-        AWS_REGION: ${{ inputs.bedrock-aws-region }} # This is the region for Bedrock service calls
+        AWS_REGION: ${{ secrets.BEDROCK_AWS_REGION }}     # Secret from this action repo
         BEDROCK_MODEL_ID: ${{ inputs.bedrock-model-id }}
         CONFIG_PATH: ${{ inputs.config-path }}
         GITHUB_EVENT_PATH: ${{ github.event_path }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_API_URL: ${{ github.api_url }}
         PR_NUMBER: ${{ github.event.issue.number }}
-        JIRA_URL: ${{ inputs.jira-url }}
-        JIRA_USER_EMAIL: ${{ inputs.jira-user-email }}
-        JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
+        JIRA_URL: ${{ secrets.JIRA_URL }}                  # Secret from this action repo
+        JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}    # Secret from this action repo
+        JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}      # Secret from this action repo (HIGHLY SENSITIVE)
         GITHUB_WORKSPACE: ${{ github.workspace }}
       run: python ${{ github.action_path }}/src/main.py 

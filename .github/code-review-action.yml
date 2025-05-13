@@ -8,10 +8,10 @@ on:
     types: [created]
 
 permissions: # STILL REQUIRED for the embedded configure-aws-credentials to work
-  id-token: write
-  contents: read
-  pull-requests: write
-  issues: read
+  id-token: write # Allows the action to get an OIDC token
+  contents: read # For checking out the code, if your action or a step needs it.
+  pull-requests: write # For posting review comments
+  issues: read # For reading issue/comment details
 
 jobs:
   review:
@@ -22,28 +22,32 @@ jobs:
     # env: block for AWS_ROLE_ARN and AWS_ROLE_SESSION_NAME is removed as it's handled inside the action
 
     steps:
-      # The 'Configure AWS Credentials' step is now embedded within the 'AI Code Review Bot Action' itself.
+      # The consuming workflow usually checks out its own code for the action to operate on.
+      # If your action is self-contained or operates only on PR data via API, this might not be strictly needed by the action itself,
+      # but the action *does* read a config file from the consuming repo, so checkout is needed.
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Fetch the PR head commit to ensure the action operates on the correct state of the code
+          # that the comment corresponds to, especially for reading the config file.
+          ref: ${{ github.event.issue.pull_request.head.sha }}
 
       - name: Run AI Review Bot Action
         id: run_ai_review
         uses: ./ # Use the action defined in the root of this repository
         with:
-          # AWS OIDC and Role Chaining Configuration
-          oidc-role-arn: ${{ secrets.OIDC_ROLE_ARN }}
-          oidc-role-aws-region: ${{ secrets.OIDC_ROLE_AWS_REGION }}
-          bedrock-role-arn: ${{ secrets.BEDROCK_ROLE_ARN }}
-          bedrock-aws-region: ${{ secrets.BEDROCK_AWS_REGION }}
+          # Most AWS and Jira related inputs are now configured using secrets within the action itself.
+          # Only pass inputs that are intended to be configurable by the consumer.
+          
+          # github-token is optional, defaults in action.yml
+          # github-token: ${{ secrets.GITHUB_TOKEN }} # or a PAT if extended permissions are needed by the Python script
 
-          # Optional: Bedrock Model Configuration (can override default in action.yml)
+          # Optional: Override the default Bedrock model ID (default is in action.yml)
           # bedrock-model-id: 'anthropic.claude-3-haiku-20240307-v1:0'
           
-          # Optional: Path to reviewer config file (can override default in action.yml)
+          # Optional: Override the default config file path (default is in action.yml)
           # config-path: '.github/my-custom-config.yml'
-
-          # Optional: Jira Configuration (provide if Jira is enabled and used)
-          jira-url: ${{ secrets.JIRA_URL }}                  
-          jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}    
-          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}      
+          pass # Using pass as a placeholder if no inputs are overridden
 
       # Optional: Add a reaction to the comment to indicate processing status
       - name: Add reaction to comment
