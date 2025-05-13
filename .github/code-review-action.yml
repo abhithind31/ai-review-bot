@@ -7,51 +7,43 @@ on:
   issue_comment:
     types: [created]
 
+permissions: # STILL REQUIRED for the embedded configure-aws-credentials to work
+  id-token: write
+  contents: read
+  pull-requests: write
+  issues: read
+
 jobs:
   review:
     # Run only if the comment body starts with "/clara-review"
     # and the comment is on a pull request.
     if: startsWith(github.event.comment.body, '/clara-review') && github.event.issue.pull_request
     runs-on: ubuntu-latest
-    permissions:
-      contents: read       # To read code contents (checkout)
-      pull-requests: write # To post review comments
-      issues: read         # To read issue (comment) details
+    # env: block for AWS_ROLE_ARN and AWS_ROLE_SESSION_NAME is removed as it's handled inside the action
 
     steps:
-      # Removed checkout step as the composite action should handle checkout if needed,
-      # or the calling workflow should handle checking out the consuming repo's code.
-      # The composite action's 'runs' steps operate in the context of the runner
-      # with the consuming repository checked out at GITHUB_WORKSPACE.
-      # - name: Checkout code
-      #   uses: actions/checkout@v4
-      #   with:
-      #     ref: ${{ github.event.issue.pull_request.head.sha }}
-      #     fetch-depth: 0
+      # The 'Configure AWS Credentials' step is now embedded within the 'AI Code Review Bot Action' itself.
 
-      # The action itself (defined in action.yml) will handle setup and execution.
-      # We just need to call it using 'uses'.
       - name: Run AI Review Bot Action
-        id: run_ai_review # Give the step an ID for checking outcome
-        # Assuming the action is in the same repository or specify owner/repo@ref
+        id: run_ai_review
         uses: ./ # Use the action defined in the root of this repository
         with:
-          # Pass required AWS secrets
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }} # Required if using temporary credentials
-          aws-region: ${{ secrets.AWS_REGION }} # Set this secret in repo/org settings
-          # Optional: Override Bedrock model
+          # AWS OIDC and Role Chaining Configuration
+          oidc-role-arn: ${{ secrets.OIDC_ROLE_ARN }}
+          oidc-role-aws-region: ${{ secrets.OIDC_ROLE_AWS_REGION }}
+          bedrock-role-arn: ${{ secrets.BEDROCK_ROLE_ARN }}
+          bedrock-aws-region: ${{ secrets.BEDROCK_AWS_REGION }}
+
+          # Optional: Bedrock Model Configuration (can override default in action.yml)
           # bedrock-model-id: 'anthropic.claude-3-haiku-20240307-v1:0'
-          # Optional: Override default config file path
-          # config-path: '.github/my-custom-config.yml'
           
-          # --- Optional: JIRA Integration --- 
-          # Provide these secrets if you have enabled Jira integration 
-          # in your .github/ai-reviewer.yml config file (Enabled by default).
-          jira-url: ${{ secrets.JIRA_URL }}
-          jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}
-          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}
+          # Optional: Path to reviewer config file (can override default in action.yml)
+          # config-path: '.github/my-custom-config.yml'
+
+          # Optional: Jira Configuration (provide if Jira is enabled and used)
+          jira-url: ${{ secrets.JIRA_URL }}                  
+          jira-user-email: ${{ secrets.JIRA_USER_EMAIL }}    
+          jira-api-token: ${{ secrets.JIRA_API_TOKEN }}      
 
       # Optional: Add a reaction to the comment to indicate processing status
       - name: Add reaction to comment
@@ -59,7 +51,7 @@ jobs:
         # Run regardless of the review step's success/failure
         if: always()
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }} # GITHUB_TOKEN is automatically available
           script: |
             const comment_id = ${{ github.event.comment.id }};
             const owner = context.repo.owner;

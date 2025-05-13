@@ -1,88 +1,99 @@
 # action.yml
 name: 'AI Code Review Bot Action'
 description: 'Runs AI-based code reviews on PR hunks triggered by a comment, using AWS Bedrock.'
-author: 'Your Name or Organization' # Optional: Add author info
+author: 'Your Name or Organization'
 
 inputs:
   github-token:
     description: 'GitHub token for API calls. Defaults to the token provided by the workflow.'
-    required: false # Set to false as we'll default it
+    required: false
     default: ${{ github.token }}
-  aws-access-key-id:
-    description: 'AWS Access Key ID for Bedrock access.'
+
+  # AWS OIDC and Role Chaining Configuration (from secrets)
+  oidc-role-arn:
+    description: 'ARN of the IAM role that trusts GitHub OIDC for the initial AWS connection.'
     required: true
-  aws-secret-access-key:
-    description: 'AWS Secret Access Key for Bedrock access.'
+  oidc-role-aws-region:
+    description: 'AWS region where the OIDC IAM role is located.'
     required: true
-  aws-session-token:
-    description: 'AWS Session Token (required if using temporary credentials/assumed roles).'
-    required: false # Set to true if temporary credentials are *always* expected
-  aws-region:
-    description: 'AWS Region where Bedrock model is hosted (e.g., us-east-1).'
+  bedrock-role-arn:
+    description: 'ARN of the IAM role that will be assumed for Bedrock access (can be in the same or different account as OIDC role).'
     required: true
+  bedrock-aws-region:
+    description: 'AWS Region where Bedrock model is hosted (e.g., us-east-1). This is for the Bedrock service itself.'
+    required: true
+
+  # Bedrock Model Configuration
   bedrock-model-id:
-    description: 'AWS Bedrock model ID to use (e.g., anthropic.claude-v2:1, anthropic.claude-3-sonnet-20240229-v1:0).'
+    description: 'AWS Bedrock model ID to use.'
     required: false
-    default: 'anthropic.claude-3-sonnet-20240229-v1:0' # Default to a recent Claude model
+    default: 'anthropic.claude-3-sonnet-20240229-v1:0'
   config-path:
-    description: 'Path to the clara-reviewer.yml config file in the consuming repo.'
+    description: 'Path to the reviewer config file in the consuming repo.'
     required: false
-    default: '.github/clara-reviewer.yml' # Renamed config file
+    default: '.github/clara-reviewer.yml'
+
+  # Jira Configuration (from secrets)
   jira-url:
     description: 'JIRA URL for integration.'
-    required: false
+    required: false # Make optional if Jira is not always used
   jira-user-email:
     description: 'JIRA user email for integration.'
-    required: false
+    required: false # Make optional
   jira-api-token:
     description: 'JIRA API token for integration.'
+    required: false # Make optional
+
+  # aws-access-key-id, aws-secret-access-key, aws-session-token are effectively unused when OIDC is handled internally.
+  aws-access-key-id:
+    description: 'AWS Access Key ID. (Typically not needed if using internal OIDC)'
+    required: false
+  aws-secret-access-key:
+    description: 'AWS Secret Access Key. (Typically not needed if using internal OIDC)'
+    required: false
+  aws-session-token:
+    description: 'AWS Session Token. (Typically not needed if using internal OIDC)'
     required: false
 
 runs:
   using: 'composite'
   steps:
-    # Note: The action runner automatically checks out the action's repository code ($GITHUB_ACTION_PATH)
-    # We don't need an explicit checkout step for the action code itself.
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.oidc-role-arn }}
+        role-chaining: true
+        aws-region: ${{ inputs.oidc-role-aws-region }} # Region for the initial OIDC role assumption
+      env:
+        AWS_ROLE_ARN: ${{ inputs.bedrock-role-arn }} # Role to chain to for Bedrock access
+        AWS_ROLE_SESSION_NAME: GitHubActionAICodeReview
 
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11' # Match your script's requirement
+        python-version: '3.11'
 
     - name: Install dependencies
       shell: bash
       run: |
         echo "Installing dependencies from ${{ github.action_path }}/requirements.txt"
         python -m pip install --upgrade pip
-        # Ensure google-generativeai is removed if present in requirements.txt from previous versions
-        # pip uninstall google-generativeai -y || true 
         pip install -r ${{ github.action_path }}/requirements.txt
 
     - name: Run AI Review Script
       shell: bash
       env:
-        # Map action inputs to environment variables expected by the script
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
-        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
-        AWS_SESSION_TOKEN: ${{ inputs.aws-session-token }}
-        AWS_REGION: ${{ inputs.aws-region }}
+        # AWS credentials are set by the 'Configure AWS Credentials' step above.
+        AWS_REGION: ${{ inputs.bedrock-aws-region }} # This is the region for Bedrock service calls
         BEDROCK_MODEL_ID: ${{ inputs.bedrock-model-id }}
         CONFIG_PATH: ${{ inputs.config-path }}
-        # Pass standard GitHub Actions environment variables needed by the script
         GITHUB_EVENT_PATH: ${{ github.event_path }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_API_URL: ${{ github.api_url }}
-        # Extract PR number from the event context
-        # This assumes the action is triggered by an issue_comment on a PR
         PR_NUMBER: ${{ github.event.issue.number }}
-        # Pass Jira credentials from inputs (if provided by the user)
-        # The script will only use these if jira.enabled is true in the config file
         JIRA_URL: ${{ inputs.jira-url }}
         JIRA_USER_EMAIL: ${{ inputs.jira-user-email }}
         JIRA_API_TOKEN: ${{ inputs.jira-api-token }}
-        # Explicitly pass the workspace path for robust file path calculation
         GITHUB_WORKSPACE: ${{ github.workspace }}
-
-      # Run the main script located within the action's directory
       run: python ${{ github.action_path }}/src/main.py 
